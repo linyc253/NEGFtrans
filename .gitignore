@@ -1,3 +1,5 @@
-test/*
-tools/*
-
+test/
+tools/
+build/*
+!build/makefile
+NEGFtrans.x
