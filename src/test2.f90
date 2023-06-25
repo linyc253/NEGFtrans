@@ -1,4 +1,5 @@
-module test
+module test2
     implicit none
-    
-end module test
+
+
+end module test2
