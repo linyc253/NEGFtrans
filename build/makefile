@@ -3,7 +3,7 @@ FC=gfortran
 SOURCEDIR=../src
 TARGET=NEGFtrans
 
-OBJS=test.o test2.o
+OBJS=fxc.o anderson_mixing.o
 
 # Check tab by: cat -t makefile
 all: $(TARGET).x
@@ -18,5 +18,5 @@ $(TARGET).x: $(SOURCEDIR)/main.f90 $(OBJS)
 clean:
 	rm *.o *.mod $(TARGET).x
 
-#=========== Deal with dependency============#
-test.o:test2.o
+#=========== Deal with dependency here============#
+#test.o:test2.o
