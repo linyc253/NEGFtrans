@@ -3,7 +3,7 @@ FC=gfortran
 SOURCEDIR=../src
 TARGET=NEGFtrans
 
-OBJS=fxc.o anderson_mixing.o
+OBJS=fxc.o anderson_mixing.o grid.o
 
 # Check tab by: cat -t makefile
 all: $(TARGET).x
