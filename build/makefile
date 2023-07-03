@@ -2,6 +2,7 @@ FFLAGS=-O3
 FC=gfortran
 SOURCEDIR=../src
 TARGET=NEGFtrans
+INCLUDE= -I/usr/local/include
 
 OBJS=fxc.o anderson_mixing.o grid.o
 
@@ -9,11 +10,11 @@ OBJS=fxc.o anderson_mixing.o grid.o
 all: $(TARGET).x
 
 $(TARGET).x: $(SOURCEDIR)/main.f90 $(OBJS)
-	$(FC) $(FFLAGS) $(SOURCEDIR)/main.f90 -o $(TARGET).x
+	$(FC) $(FFLAGS) $(INCLUDE) $(SOURCEDIR)/main.f90 -o $(TARGET).x
 
 
 %.o:$(SOURCEDIR)/%.f90
-	$(FC) $(FFLAGS) -c $< -o $@
+	$(FC) $(FFLAGS) $(INCLUDE) -c $< -o $@
 
 clean:
 	rm *.o *.mod $(TARGET).x
