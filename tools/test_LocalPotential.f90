@@ -3,7 +3,7 @@ program test_LocalPotential
     ! gfortran ../tools/test_LocalPotential.f90 -o test_LocalPotential.x grid.o -lfftw3
     use grid
     implicit none
-    integer, parameter :: N_x = 160, N_y = 170
+    integer, parameter :: N_x = 160, N_y = 170, Nr = 30
     real*8, parameter :: a_x = 10.D0, a_y = 8.D0, A = 600.D0, R = 2.D0
 
     real*8 :: sum
@@ -12,7 +12,7 @@ program test_LocalPotential
     integer :: i, j
 
     allocate(V_real(N_x, N_y))
-    allocate(V_reciprocal(-N_x/2: N_x/2, -N_y/2: N_y/2))
+    allocate(V_reciprocal(-Nr/2: Nr/2, -Nr/2: Nr/2))
 
     ! Construct V_real
     V_real(:, :) = 0.D0
@@ -30,4 +30,8 @@ program test_LocalPotential
     print *, sum / (N_x * N_y)
     V_reciprocal(:, :) = 1.D0
     call LocalPotential_RealToPlanewave(V_real, V_reciprocal)
+    print *, V_reciprocal(0, 0)
+    print *, V_reciprocal(1, 1)
+    print *, V_reciprocal(-1, -1)
+
 end program test_LocalPotential
