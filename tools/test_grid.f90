@@ -1,6 +1,6 @@
-program test_LocalPotential
+program test_Greensfunction_PtoR
     ! To compile, enter the build/ directory, and type:
-    ! gfortran ../tools/test_LocalPotential.f90 -o test_LocalPotential.x grid.o -lfftw3
+    ! gfortran ../tools/test_LocalPotential_RtoP.f90 -o test_LocalPotential_RtoP.x grid.o -lfftw3
     use grid
     implicit none
     integer, parameter :: N_x = 160, N_y = 170, Nr = 30
@@ -34,4 +34,4 @@ program test_LocalPotential
     print *, V_reciprocal(1, 1)
     print *, V_reciprocal(-1, -1)
 
-end program test_LocalPotential
+end program test_Greensfunction_PtoR

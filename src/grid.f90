@@ -64,6 +64,83 @@ contains
         end do
     end subroutine LocalPotential_RealToPlanewave
 
+    subroutine Greensfunction_PlanewaveToReal(subGreenFunc, nx_grid, ny_grid, Lx, Ly, subGreenDiag)
+        real*8, intent(in) :: Lx, Ly
+        integer, intent(in) :: nx_grid(:), ny_grid(:)
+        complex*16, intent(in) :: subGreenFunc(:, :)
+        complex*16, intent(out) :: subGreenDiag(:, :)
+
+        integer :: i, ii, j, jj, N, N_x, N_y
+        real*8 :: Omega
+        complex*16, allocatable :: GreenTensor(:, :, :, :)
+        complex*16, allocatable :: work(:, :), work_out(:, :)
+        type(C_PTR) :: plan, iplan
+
+        include 'constant.f90'
+
+        N = size(nx_grid)
+        N_x = size(subGreenDiag, 1)
+        N_y = size(subGreenDiag, 2)
+        allocate(GreenTensor(N_x, N_x, N_y, N_y))
+        allocate(work(N_x, N_y), work_out(N_x, N_y))
+        
+        ! Construct GreenTensor
+        GreenTensor(:, :, :, :) = 0D0
+        do i=1, N
+            do ii=1, N
+                GreenTensor(nx_grid(i) + N_x / 2, nx_grid(ii) + N_x / 2,&
+                 ny_grid(i) + N_y / 2, ny_grid(ii) + N_y / 2)&
+                 = subGreenFunc(i, ii)
+            end do
+        end do
+
+        plan = fftw_plan_dft_2d(N_y, N_x, work, work_out, FFTW_FORWARD, FFTW_ESTIMATE)
+        iplan = fftw_plan_dft_2d(N_y, N_x, work, work_out, FFTW_BACKWARD, FFTW_ESTIMATE)
+
+        ! Perform FFT
+        do i=1, N_x
+            do j=1, N_y
+
+                do ii=1, N_x
+                    do jj=1, N_y
+                        work(ii, jj) = GreenTensor(i, ii, j, jj)
+                    end do
+                end do
+                call fftw_execute_dft(plan, work, work_out)
+                do ii=1, N_x
+                    do jj=1, N_y
+                        GreenTensor(i, ii, j, jj) = work_out(ii, jj)
+                    end do
+                end do
+                
+            end do
+        end do
+
+        ! Perform IFFT
+        do ii=1, N_x
+            do jj=1, N_y
+
+                do i=1, N_x
+                    do j=1, N_y
+                        work(ii, jj) = GreenTensor(i, ii, j, jj)
+                    end do
+                end do
+                call fftw_execute_dft(iplan, work, work_out)
+                subGreenDiag(ii, jj) = work_out(ii, jj)
+                
+            end do
+        end do
+
+        ! Devide by (Lx * Ly)
+        Omega = Lx * Ly
+        do j=1, N_y
+            do i=1, N_x
+                subGreenDiag(i, j) = subGreenDiag(i, j) / Omega
+            end do
+        end do
+
+    end subroutine
+
     subroutine sub_Hamiltonian(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
         ! Construct the Hamiltonian in transverse direction (xy-direction) for each z
         integer, intent(in) :: nx_grid(:), ny_grid(:)
