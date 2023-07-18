@@ -6,6 +6,7 @@ module grid
     public LocalPotential_RealToPlanewave
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
+        ! Transform the potential in real space to the matrix element in plane wave basis
         real*8, intent(in) :: V_real(:, :)
         complex*16, allocatable, intent(inout) :: V_reciprocal(:, :)
         !                ^                 ^
@@ -62,5 +63,82 @@ contains
             end do
         end do
     end subroutine LocalPotential_RealToPlanewave
+
+    subroutine sub_Hamiltonian(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
+        ! Construct the Hamiltonian in transverse direction (xy-direction) for each z
+        integer, intent(in) :: nx_grid(:), ny_grid(:)
+        real*8, allocatable, intent(in) :: V_reciprocal(:, :)
+        real*8, intent(in) :: Lx, Ly, kx, ky
+        real*8, intent(out) :: Hamiltonian(:, :)
+
+        integer :: i, j, N
+
+        include 'constant.f90'
+
+        N = size(nx_grid)
+
+        do j=1, N
+            do i=1, N
+                Hamiltonian(i, j) =&
+                 V_reciprocal(nx_grid(i) - nx_grid(j), ny_grid(i) - ny_grid(j))
+            end do
+        end do
+
+        do i=1, N
+            Hamiltonian(i, i) = Hamiltonian(i, i) + &
+             ((2 * nx_grid(i) * pi / Lx + kx) ** 2 + (2 * ny_grid(i) * pi / Ly + ky) ** 2) / 2
+        end do
+
+    end subroutine sub_Hamiltonian
+
+    function PlaneWaveBasis_construction_findsize(ENCUT, Lx, Ly) result(N)
+        ! Calculate the size (N) of the planewave grid by ENCUT
+        ! Use this before you call the subroutine "PlaneWaveBasis_construction"
+        ! Then allocate the array by: allocate(nx_grid(N), ny_grid(N))
+        real*8, intent(in) :: ENCUT, Lx, Ly
+        integer :: N
+
+        integer :: i, j, nx_max, ny_max
+
+        include 'constant.f90'
+
+        N = 0
+        nx_max = ceiling(Lx / pi * sqrt(ENCUT / 2))
+        ny_max = ceiling(Ly / pi * sqrt(ENCUT / 2))
+        do j=-ny_max, ny_max
+            do i= -nx_max, nx_max
+                if (((2 * i * pi / Lx) ** 2 + (2 * j * pi / Ly) ** 2) / 2 &
+                 <= ENCUT) then
+                    N = N + 1
+                end if
+            end do
+        end do
+
+    end function PlaneWaveBasis_construction_findsize
+
+    subroutine PlaneWaveBasis_construction(ENCUT, Lx, Ly, nx_grid, ny_grid)
+        ! Construction of the planewave basis, limited by ENCUT
+        real*8, intent(in) :: ENCUT, Lx, Ly
+        integer, intent(out) :: nx_grid(:), ny_grid(:)
+
+        integer :: i, j, nx_max, ny_max, n
+
+        include 'constant.f90'
+
+        n = 1
+        nx_max = ceiling(Lx / pi * sqrt(ENCUT / 2))
+        ny_max = ceiling(Ly / pi * sqrt(ENCUT / 2))
+        do j=-ny_max, ny_max
+            do i= -nx_max, nx_max
+                if (((2 * i * pi / Lx) ** 2 + (2 * j * pi / Ly) ** 2) / 2 &
+                 <= ENCUT) then
+                    nx_grid(n) = i
+                    ny_grid(n) = j
+                    n = n + 1
+                end if
+            end do
+        end do
+
+    end subroutine PlaneWaveBasis_construction
 
 end module grid

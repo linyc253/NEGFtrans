@@ -1,4 +1,4 @@
-FFLAGS=-O3 -w
+FFLAGS=-O3
 FC=gfortran
 SOURCEDIR=../src
 TARGET=NEGFtrans
