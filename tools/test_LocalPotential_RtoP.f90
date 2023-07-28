@@ -28,7 +28,7 @@ program test_LocalPotential_RtoP
     end do
 
     print *, sum / (N_x * N_y)
-    V_reciprocal(:, :) = 1.D0
+    !V_reciprocal(:, :) = 1.D0
     call LocalPotential_RealToPlanewave(V_real, V_reciprocal)
     print *, V_reciprocal(0, 0)
     print *, V_reciprocal(1, 1)

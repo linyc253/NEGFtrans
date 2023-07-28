@@ -3,7 +3,9 @@ module grid
     implicit none
     include 'fftw3.f03'
     private
-    public LocalPotential_RealToPlanewave
+    public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
+    Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, sub_Hamiltonian, &
+    print_c_matrix, NonLocalPotential_RealToPlanewave
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
         ! Transform the potential in real space to the matrix element in plane wave basis
@@ -64,14 +66,12 @@ contains
         end do
     end subroutine LocalPotential_RealToPlanewave
 
-    subroutine Greensfunction_PlanewaveToReal(subGreenFunc, nx_grid, ny_grid, Lx, Ly, subGreenDiag)
-        real*8, intent(in) :: Lx, Ly
+    subroutine Greensfunction_PlanewaveToReal(subGreenFunc, nx_grid, ny_grid, subGreenDiag)
         integer, intent(in) :: nx_grid(:), ny_grid(:)
         complex*16, intent(in) :: subGreenFunc(:, :)
         complex*16, intent(out) :: subGreenDiag(:, :)
 
-        integer :: i, ii, j, jj, N, N_x, N_y
-        real*8 :: Omega
+        integer :: i, j, ii, jj, N, N_x, N_y
         complex*16, allocatable :: GreenTensor(:, :, :, :)
         complex*16, allocatable :: work(:, :), work_out(:, :)
         type(C_PTR) :: plan, iplan
@@ -81,65 +81,142 @@ contains
         N = size(nx_grid)
         N_x = size(subGreenDiag, 1)
         N_y = size(subGreenDiag, 2)
-        allocate(GreenTensor(N_x, N_x, N_y, N_y))
+        allocate(GreenTensor(N_x, N_y, N_x, N_y))
         allocate(work(N_x, N_y), work_out(N_x, N_y))
         
         ! Construct GreenTensor
-        GreenTensor(:, :, :, :) = 0D0
-        do i=1, N
-            do ii=1, N
-                GreenTensor(nx_grid(i) + N_x / 2, nx_grid(ii) + N_x / 2,&
-                 ny_grid(i) + N_y / 2, ny_grid(ii) + N_y / 2)&
-                 = subGreenFunc(i, ii)
+        GreenTensor(:, :, :, :) = complex(0.D0, 0.D0)
+        do j=1, N
+            do i=1, N
+                GreenTensor(nx_grid(i) + N_x / 2, ny_grid(i) + N_y / 2, &
+                 nx_grid(j) + N_x / 2, ny_grid(j) + N_y / 2)&
+                 = subGreenFunc(i, j)
             end do
         end do
 
         plan = fftw_plan_dft_2d(N_y, N_x, work, work_out, FFTW_FORWARD, FFTW_ESTIMATE)
         iplan = fftw_plan_dft_2d(N_y, N_x, work, work_out, FFTW_BACKWARD, FFTW_ESTIMATE)
 
-        ! Perform FFT
-        do i=1, N_x
-            do j=1, N_y
+        ! Perform FFT on second index
+        do j=1, N_y
+            do i=1, N_x
 
-                do ii=1, N_x
-                    do jj=1, N_y
-                        work(ii, jj) = GreenTensor(i, ii, j, jj)
+                do jj=1, N_y
+                    do ii=1, N_x
+                        work(ii, jj) = GreenTensor(i, j, ii, jj)
                     end do
                 end do
                 call fftw_execute_dft(plan, work, work_out)
-                do ii=1, N_x
-                    do jj=1, N_y
-                        GreenTensor(i, ii, j, jj) = work_out(ii, jj)
+                do jj=1, N_y
+                    do ii=1, N_x
+                        GreenTensor(i, j, ii, jj) = work_out(ii, jj)
                     end do
                 end do
                 
             end do
         end do
 
-        ! Perform IFFT
-        do ii=1, N_x
-            do jj=1, N_y
+        ! Perform IFFT on first index
+        do jj=1, N_y
+            do ii=1, N_x
 
-                do i=1, N_x
-                    do j=1, N_y
-                        work(ii, jj) = GreenTensor(i, ii, j, jj)
+                do j=1, N_y
+                    do i=1, N_x
+                        work(i, j) = GreenTensor(i, j, ii, jj)
                     end do
                 end do
                 call fftw_execute_dft(iplan, work, work_out)
                 subGreenDiag(ii, jj) = work_out(ii, jj)
+
+            end do
+        end do
+
+    end subroutine Greensfunction_PlanewaveToReal
+
+    subroutine NonLocalPotential_RealToPlanewave(V_real, V_reciprocal)
+        complex*16, intent(in) :: V_real(:, :, :, :)
+        complex*16, allocatable, intent(inout) :: V_reciprocal(:, :, :, :)
+        !                ^                 ^
+        ! Becuase we want to pass the boundary of V_reciprocal to this subroutine
+
+        integer :: i, j, ii, jj, N, N_x, N_y
+        real*8 :: N_prod
+        complex*16, allocatable :: V_work(:, :, :, :)
+        complex*16, allocatable :: work(:, :), work_out(:, :)
+        type(C_PTR) :: plan, iplan
+
+        include 'constant.f90'
+
+        N_x = size(V_real, 1)
+        N_y = size(V_real, 2)
+        allocate(V_work(N_x, N_y, N_x, N_y))
+        allocate(work(N_x, N_y), work_out(N_x, N_y))
+        
+        ! Times phase factor
+        do jj=1, N_y
+            do ii=1, N_x
+                do j=1, N_y
+                    do i=1, N_x
+                        V_work(i, j, ii, jj) = V_real(i, j, ii, jj) * (-1) ** (i + j - ii - jj)
+                    end do
+                end do
+            end do
+        end do
+
+        plan = fftw_plan_dft_2d(N_y, N_x, work, work_out, FFTW_FORWARD, FFTW_ESTIMATE)
+        iplan = fftw_plan_dft_2d(N_y, N_x, work, work_out, FFTW_BACKWARD, FFTW_ESTIMATE)
+
+        ! Perform IFFT on second index
+        do j=1, N_y
+            do i=1, N_x
+
+                do jj=1, N_y
+                    do ii=1, N_x
+                        work(ii, jj) = V_work(i, j, ii, jj)
+                    end do
+                end do
+                call fftw_execute_dft(iplan, work, work_out)
+                do jj=1, N_y
+                    do ii=1, N_x
+                        V_work(i, j, ii, jj) = work_out(ii, jj)
+                    end do
+                end do
                 
             end do
         end do
 
-        ! Devide by (Lx * Ly)
-        Omega = Lx * Ly
-        do j=1, N_y
-            do i=1, N_x
-                subGreenDiag(i, j) = subGreenDiag(i, j) / Omega
+        ! Perform FFT on first index
+        do jj=1, N_y
+            do ii=1, N_x
+
+                do j=1, N_y
+                    do i=1, N_x
+                        work(i, j) = V_work(i, j, ii, jj)
+                    end do
+                end do
+                call fftw_execute_dft(plan, work, work_out)
+                do j=1, N_y
+                    do i=1, N_x
+                        V_work(i, j, ii, jj) = work_out(i, j)
+                    end do
+                end do    
+
             end do
         end do
 
-    end subroutine
+        ! Devide by ((N_x * N_y) ** 2), and rearrange index
+        N_prod = real((N_x * N_y) ** 2)
+        do jj=1, N_y
+            do ii=1, N_x
+                do j=1, N_y
+                    do i=1, N_x
+                        V_reciprocal(i - 1 - N_x / 2, j - 1 - N_y / 2, ii - 1 - N_x / 2, jj - 1 - N_y / 2) &
+                        = V_work(i, j, ii, jj) / N_prod
+                    end do
+                end do
+            end do
+        end do
+    end subroutine NonLocalPotential_RealToPlanewave
 
     subroutine sub_Hamiltonian(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
         ! Construct the Hamiltonian in transverse direction (xy-direction) for each z
@@ -198,24 +275,65 @@ contains
         real*8, intent(in) :: ENCUT, Lx, Ly
         integer, intent(out) :: nx_grid(:), ny_grid(:)
 
-        integer :: i, j, nx_max, ny_max, n
+        integer :: i, j, nx_max, ny_max, nn
 
         include 'constant.f90'
 
-        n = 1
+        nn = 1
         nx_max = ceiling(Lx / pi * sqrt(ENCUT / 2))
         ny_max = ceiling(Ly / pi * sqrt(ENCUT / 2))
         do j=-ny_max, ny_max
             do i= -nx_max, nx_max
                 if (((2 * i * pi / Lx) ** 2 + (2 * j * pi / Ly) ** 2) / 2 &
                  <= ENCUT) then
-                    nx_grid(n) = i
-                    ny_grid(n) = j
-                    n = n + 1
+                    nx_grid(nn) = i
+                    ny_grid(nn) = j
+                    nn = nn + 1
                 end if
             end do
         end do
 
     end subroutine PlaneWaveBasis_construction
 
+    subroutine print_c_matrix(Matrix)
+        complex*16, intent(in) :: Matrix(:, :)
+
+        real*8, allocatable :: Matrix_abs(:, :)
+        integer :: i, j, N, M
+        N = size(Matrix, 1)
+        M = size(Matrix, 2)
+
+        allocate(Matrix_abs(N, M))
+        do j=1, M
+            do i=1, N
+                Matrix_abs(i, j) = abs(Matrix(i, j))
+            end do
+        end do
+        print *, "(", N, ",", M, ")"
+        print *, maxval(Matrix_abs)
+        print *, "=============================="
+    end subroutine print_c_matrix
+
+    subroutine print_c_tensor(Tensor)
+        complex*16, intent(in) :: Tensor(:, :, :, :)
+
+        real*8, allocatable :: Tensor_abs(:, :, :, :)
+        integer :: i, j, ii, jj, N, M
+        N = size(Tensor, 1)
+        M = size(Tensor, 3)
+
+        allocate(Tensor_abs(N, N, M, M))
+        do j=1, M
+            do i=1, N
+                do jj=1, M
+                    do ii=1, N
+                        Tensor_abs(i, ii, j, jj) = abs(Tensor(i, ii, j, jj))
+                    end do
+                end do
+            end do
+        end do
+        print *, "(", N, ",", N, ",", M, ",", M, ")"
+        print *, maxval(Tensor_abs)
+        print *, "=============================="
+    end subroutine print_c_tensor
 end module grid
