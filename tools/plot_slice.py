@@ -15,9 +15,9 @@ V_real = DATA[:, 1]
 V_new_real = DATA[:, 2]
 
 plt.plot(X, V_real, label="V_real")
-plt.plot(X, V_new_real, label="V_new_real")
+plt.plot(X, V_new_real, "--", label="V_new")
 plt.legend()
-plt.title("New version ENCUT = 180.0 Hartree")
+plt.title("New version ENCUT = 150.0 eV")
 plt.xlabel("X")
 plt.ylabel("Potential")
-plt.savefig("grid2_slice1")
+plt.savefig("grid2_slice2")

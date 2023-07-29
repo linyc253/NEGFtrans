@@ -3,8 +3,9 @@ program test_grid2
     ! gfortran ../tools/test_grid2.f90 -o test_grid2.x grid.o -lfftw3
     use grid
     implicit none
-    integer, parameter :: N_x = 50, N_y = 60, Nr = 50
-    real*8, parameter :: Lx = 10.D0, Ly = 8.D0, A = 5.D0, R = 2.D0, ENCUT = 180.D0
+    integer, parameter :: N_x = 50, N_y = 60, Nr_x = 24, Nr_y = 30
+    real*8, parameter :: Lx = 10.D0, Ly = 8.D0, A = 5.D0, R = 2.D0, ENCUT = 150.D0
+    !                                                                 ^ unit: eV     
 
     real*8 :: sum
     complex*16, allocatable :: V_real(:, :, :, :), V_reciprocal(:, :, :, :), V_new_diag(:, :) &
@@ -15,7 +16,7 @@ program test_grid2
     include 'constant.f90'
 
     allocate(V_real(N_x, N_y, N_x, N_y), V_new_diag(N_x, N_y))
-    allocate(V_reciprocal(-Nr/2: Nr/2, -Nr/2: Nr/2, -Nr/2: Nr/2, -Nr/2: Nr/2))
+    allocate(V_reciprocal(-Nr_x/2: Nr_x/2, -Nr_y/2: Nr_y/2, -Nr_x/2: Nr_x/2, -Nr_y/2: Nr_y/2))
 
     ! Construct V_real
     do jj=1, N_y
@@ -23,19 +24,21 @@ program test_grid2
             do j=1, N_y
                 do i=1, N_x
                     V_real(i, j, ii, jj) = &
-                    exp(cos(2 * pi * (real(i) / N_x - N_x / 2)) * cos(2 * pi * (real(i) / N_x - real(ii) / N_x))) &
-                    + exp(cos(2 * pi * (real(j) / N_y - N_y / 2)) * cos(2 * pi * (real(j) / N_y - real(jj) / N_y)))
+                    complex(exp(cos(2 * pi * (real(i) / N_x)) * cos(2 * pi * (real(i) / N_x - real(ii) / N_x))) &
+                    , exp(cos(2 * pi * (real(j) / N_y) - 0.3) * cos(2 * pi * (real(j) / N_y - real(jj) / N_y))))
                 end do
             end do
         end do
     end do
 
-    ! Grid layout
+    ! Perform RealToPlanewave transformation
     call NonLocalPotential_RealToPlanewave(V_real, V_reciprocal)
-    N = PlaneWaveBasis_construction_findsize(ENCUT, Lx, Ly)
+
+    ! Grid layout
+    N = PlaneWaveBasis_construction_findsize(ENCUT / hartree, Lx, Ly)
     allocate(nx_grid(N), ny_grid(N), subPotential(N, N))
     print *, "N = ", N
-    call PlaneWaveBasis_construction(ENCUT, Lx, Ly, nx_grid, ny_grid)
+    call PlaneWaveBasis_construction(ENCUT / hartree, Lx, Ly, nx_grid, ny_grid)
 
     do j=1, N
         do i=1, N
@@ -46,6 +49,7 @@ program test_grid2
     print *, "subPotential"
     call print_c_matrix(subPotential)
 
+    ! Perform PlanewaveToReal transformation
     call Greensfunction_PlanewaveToReal(subPotential, nx_grid, ny_grid, V_new_diag)
 
     sum = 0.D0
@@ -58,12 +62,9 @@ program test_grid2
     print *, "Error =", sqrt(sum)
     open(unit=16, file="grid2_slice.dat")
     write(16, *) "   X                 V_real             V_new_diag"
-    ! do i=1, N_x
-    !     write(16, '(3(G12.5,7X))') i * Lx / N_x, real(V_real(i, N_y / 2, i, N_y / 2)), real(V_new_diag(i, N_y / 2))
-    ! end do
 
     do j=1, N_y
-        write(16, '(3(G12.5,7X))') j * Ly / N_y, real(V_real(N_x / 2, j, N_x / 2, j)), real(V_new_diag(N_x / 2, j))
+        write(16, '(3(G12.5,7X))') j * Ly / N_y, abs(V_real(N_x / 2, j, N_x / 2, j)), abs(V_new_diag(N_x / 2, j))
     end do
 
 end program test_grid2

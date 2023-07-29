@@ -8,7 +8,7 @@ module grid
     print_c_matrix, NonLocalPotential_RealToPlanewave
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
-        ! Transform the potential in real space to the matrix element in plane wave basis
+        ! Transform a local potential in real space into the matrix element in plane wave basis
         real*8, intent(in) :: V_real(:, :)
         complex*16, allocatable, intent(inout) :: V_reciprocal(:, :)
         !                ^                 ^
@@ -67,6 +67,7 @@ contains
     end subroutine LocalPotential_RealToPlanewave
 
     subroutine Greensfunction_PlanewaveToReal(subGreenFunc, nx_grid, ny_grid, subGreenDiag)
+        ! Transform a Green's function in plane wave basis into real space, output diagonal elements only
         integer, intent(in) :: nx_grid(:), ny_grid(:)
         complex*16, intent(in) :: subGreenFunc(:, :)
         complex*16, intent(out) :: subGreenDiag(:, :)
@@ -134,12 +135,13 @@ contains
     end subroutine Greensfunction_PlanewaveToReal
 
     subroutine NonLocalPotential_RealToPlanewave(V_real, V_reciprocal)
+        ! Transform a non-local potential in real space into the matrix element in plane wave basis
         complex*16, intent(in) :: V_real(:, :, :, :)
         complex*16, allocatable, intent(inout) :: V_reciprocal(:, :, :, :)
         !                ^                 ^
         ! Becuase we want to pass the boundary of V_reciprocal to this subroutine
 
-        integer :: i, j, ii, jj, N, N_x, N_y
+        integer :: i, j, ii, jj, N_x, N_y, Nr_x, Nr_y, STATUS
         real*8 :: N_prod
         complex*16, allocatable :: V_work(:, :, :, :)
         complex*16, allocatable :: work(:, :), work_out(:, :)
@@ -151,6 +153,21 @@ contains
         N_y = size(V_real, 2)
         allocate(V_work(N_x, N_y, N_x, N_y))
         allocate(work(N_x, N_y), work_out(N_x, N_y))
+
+        ! Check the form of V_reciprocal
+        Nr_x = size(V_reciprocal, 1) - 1
+        Nr_y = size(V_reciprocal, 2) - 1
+        if((Nr_x > N_x) .or. (Nr_y > N_y)) then
+            print *, "ERROR: 'The size of V_reciprocal minus one' should not be"
+            print *, "       larger than 'the size of V_real'"
+            call exit(STATUS)
+        end if
+        if((-lbound(V_reciprocal, 1) /= ubound(V_reciprocal, 1)) .or. &
+        (-lbound(V_reciprocal, 2) /= ubound(V_reciprocal, 2))) then
+            print *, "ERROR: The index boundary of V_reciprocal must be symmetric"
+            print *, "       about zero"
+            call exit(STATUS)
+        end if
         
         ! Times phase factor
         do jj=1, N_y
@@ -206,12 +223,12 @@ contains
 
         ! Devide by ((N_x * N_y) ** 2), and rearrange index
         N_prod = real((N_x * N_y) ** 2)
-        do jj=1, N_y
-            do ii=1, N_x
-                do j=1, N_y
-                    do i=1, N_x
-                        V_reciprocal(i - 1 - N_x / 2, j - 1 - N_y / 2, ii - 1 - N_x / 2, jj - 1 - N_y / 2) &
-                        = V_work(i, j, ii, jj) / N_prod
+        do jj=-Nr_y / 2, Nr_y / 2
+            do ii=-Nr_x / 2, Nr_x / 2
+                do j=-Nr_y / 2, Nr_y / 2
+                    do i=-Nr_x / 2, Nr_x / 2
+                        V_reciprocal(i, j, ii, jj) = &
+                        V_work(i + 1 + N_x / 2, j + 1 + N_y / 2, ii + 1 + N_x / 2, jj + 1 + N_y / 2) / N_prod
                     end do
                 end do
             end do
