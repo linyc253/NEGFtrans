@@ -3,14 +3,16 @@ program test_inverse
     ! gfortran ../tools/test_inverse.f90 -o test_inverse.x negf.o -llapack -lblas
     use negf
     implicit none
-    integer, parameter :: N = 200, N_z = 20
-    real*8 :: rand_real, rand_imag, start_time, end_time
-    complex*16, allocatable :: E_minus_H(:, :), Blocks(:, :, :), Greensfunc(:, :), work(:), Identity(:, :)
+    integer, parameter :: N = 50, N_z = 40
+    real*8 :: rand_real, rand_imag, start_time, end_time, sum
+    complex*16, allocatable :: E_minus_H(:, :), Blocks(:, :, :), Greensfunc(:, :), work(:)
+    complex*16, allocatable :: G_function(:, :, :, :)
     integer, allocatable :: IPIV(:)
-    integer :: i, j, z, N_tot, STATUS, NB, ilaenv, ii
+    integer :: i, j, z, N_tot, STATUS, NB, ilaenv
 
     N_tot = N * N_z
     allocate(E_minus_H(N_tot, N_tot), Blocks(N, N , N_z), Greensfunc(N_tot, N_tot))
+    allocate(G_function(N, N, N_z, 3))
 
     do z=1, N_z
         do j=1, N
@@ -39,28 +41,63 @@ program test_inverse
         end do
     end do
 
-    ! Inverse the matrix
+    ! Inverse the matrix, Method 1
     call cpu_time(start_time)
     NB = ilaenv(1, "zgetri", "", N_tot, N_tot, -1, -1)
-    IF(NB < 1) NB = N_tot
+    if(NB < 1) NB = N_tot
     allocate(IPIV(N_tot), work(NB * N_tot))
     call zgetrf(N_tot, N_tot, Greensfunc, N_tot, IPIV, STATUS)
     call zgetri(N_tot, Greensfunc, N_tot, IPIV, work, NB * N_tot, STATUS)
     call cpu_time(end_time)
-    print *, end_time - start_time
+    print *, "Method 1", end_time - start_time, "s"
+
+    ! do j=1, N
+    !     print '(10f8.2)', (real(Greensfunc(i, j)), i=1, N)
+    ! end do
+
+    ! Inverse the matrix, Method 2
+    call cpu_time(start_time)
+    call GreensFunction_tri_solver(Blocks, G_function)
+    call cpu_time(end_time)
+    print *, "Method 2", end_time - start_time, "s"
+
+    ! do j=1, N
+    !     print '(10f8.2)', (real(G_function(i, j, 1, 1)), i=1, N)
+    ! end do
 
     ! Check
-    ! allocate(Identity(N_tot, N_tot))
-    ! Identity(:, :) = 0.D0
-    ! do j=1, N_tot
-    !     do i=1, N_tot
-    !         do ii=1, N_tot
-    !             Identity(i, j) = Identity(i, j) + Greensfunc(i, ii) * E_minus_H(ii, j)
-    !         end do
-    !     end do
-    ! end do
-    ! do i=1, N_tot
-    !     print '(12f8.2)', (real(Identity(i, j)), j=1, N_tot)
-    ! end do
+    sum = 0.D0
+    do z=1, N_z
+        do j=1, N
+            do i=1, N
+                sum = sum + &
+                abs(Greensfunc(i + N * (z - 1), j + N * (z - 1)) - G_function(i, j, z, 1)) ** 2
+            end do
+        end do
+    end do
+    print *, "Error1 =", sqrt(sum)
+
+    sum = 0.D0
+    do z=1, N_z
+        do j=1, N
+            do i=1, N
+                sum = sum + &
+                abs(Greensfunc(i + N * (z - 1), j) - G_function(i, j, z, 2)) ** 2
+            end do
+        end do
+    end do
+    print *, "Error2 =", sqrt(sum)
+
+    sum = 0.D0
+    do z=1, N_z
+        do j=1, N
+            do i=1, N
+                sum = sum + &
+                abs(Greensfunc(i + N * (z - 1), j + N * (N_z - 1)) - G_function(i, j, z, 3)) ** 2
+            end do
+        end do
+    end do
+    print *, "Error3 =", sqrt(sum)
+
     
 end program test_inverse
