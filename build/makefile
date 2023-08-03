@@ -5,7 +5,7 @@ TARGET=NEGFtrans
 INCLUDE= -I/usr/local/include
 LIBS=-lfftw3 -llapack -lblas
 
-OBJS=fxc.o anderson_mixing.o grid.o
+OBJS=fxc.o anderson_mixing.o grid.o negf.o
 
 # Check tab by: cat -t makefile
 all: $(TARGET).x

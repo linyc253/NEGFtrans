@@ -44,10 +44,10 @@ program test_grid3
 
     print *, "Error =", sqrt(sum)
     open(unit=16, file="grid3_slice.dat")
-    write(16, *) "    X               V_reciprocal      V_loc_reciprocal"
+    write(16, *) "    G_y               V_reciprocal      V_loc_reciprocal"
 
     do j=-Nr_y / 2, Nr_y / 2
-        write(16, '(3(G12.5,7X))') j * Ly / N_y, real(V_reciprocal(0, j, 0, 0)), real(V_loc_reciprocal(0, j))
+        write(16, '(3(G12.5,7X))') 2 * j * pi / Ly, real(V_reciprocal(0, j, 0, 0)), real(V_loc_reciprocal(0, j))
     end do
 
 end program test_grid3
