@@ -3,7 +3,7 @@ program test_inverse
     ! gfortran ../tools/test_inverse.f90 -o test_inverse.x negf.o -llapack -lblas
     use negf
     implicit none
-    integer, parameter :: N = 50, N_z = 40
+    integer, parameter :: N = 30, N_z = 50
     real*8 :: rand_real, rand_imag, start_time, end_time, sum
     complex*16, allocatable :: E_minus_H(:, :), Blocks(:, :, :), Greensfunc(:, :), work(:)
     complex*16, allocatable :: G_function(:, :, :, :)
