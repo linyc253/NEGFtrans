@@ -1,7 +1,7 @@
 module negf
     implicit none
     private
-    public GreensFunction_tri_solver
+    public GreensFunction_tri_solver, coefficient_simpson, value_simpson
 contains
     subroutine inverse(Matrix, inv_Matrix)
         complex*16, intent(in) :: Matrix(:, :)
@@ -138,4 +138,55 @@ contains
             end do
             
         end subroutine GreensFunction_tri_solver
+
+        function coefficient_simpson(i, N, l_bound, u_bound) result(coefficient)
+            ! Provide the scalar factor (c_i) of simpson integral method
+            ! \[\int_{l_bound}^{u_bound} f(x) dx = \sum_i c_i f(x_i)\]
+            ! The index "i" start from 1 ~ N (Fortran convention)
+            integer, intent(in) :: i, N
+            complex*16, intent(in) :: l_bound, u_bound
+            complex*16 :: coefficient
+
+            if(mod(N, 2) == 1) then
+                ! Simpson 1/3 rule apply to all
+                if((i == 1) .or. (i == N)) then
+                    coefficient = 1.D0 / 3
+                else
+                    if(mod(i, 2) == 0) coefficient = 4.D0 / 3
+                    if(mod(i, 2) == 1) coefficient = 2.D0 / 3
+                end if
+
+            else
+                ! Simpson 1/3 rule apply to 1 ~ (N-3)
+                ! Simpson 3/8 rule apply to (N-3) ~ N
+                if(i == 1) then
+                    coefficient = 1.D0 / 3
+                else if(i == N - 3) then
+                    coefficient = 1.D0 / 3 + 1.D0 * 3 / 8
+                else if((i == N - 2) .or. (i == N - 1)) then
+                    coefficient = 3.D0 * 3 / 8
+                else if(i == N) then
+                    coefficient = 1.D0 * 3 / 8
+                else
+                    if(mod(i, 2) == 0) coefficient = 4.D0 / 3
+                    if(mod(i, 2) == 1) coefficient = 2.D0 / 3
+                end if
+
+            end if
+
+            coefficient = coefficient * (u_bound - l_bound) / (N - 1)
+
+        end function coefficient_simpson
+
+        function value_simpson(i, N, l_bound, u_bound) result(val)
+            ! Provide the grid value (x_i) of simpson integral method
+            ! \[\int_{l_bound}^{u_bound} f(x) dx = \sum_i c_i f(x_i)\]
+            ! The index "i" start from 1 ~ N (Fortran convention)
+            integer, intent(in) :: i, N
+            complex*16, intent(in) :: l_bound, u_bound
+            complex*16 :: val
+
+            val = (i - 1) * (u_bound - l_bound) / (N - 1) + l_bound
+
+        end function value_simpson
 end module
