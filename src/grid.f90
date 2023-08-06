@@ -238,9 +238,9 @@ contains
     subroutine sub_Hamiltonian(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
         ! Construct the Hamiltonian in transverse direction (xy-direction) for each z
         integer, intent(in) :: nx_grid(:), ny_grid(:)
-        real*8, allocatable, intent(in) :: V_reciprocal(:, :)
+        complex*16, allocatable, intent(in) :: V_reciprocal(:, :)
         real*8, intent(in) :: Lx, Ly, kx, ky
-        real*8, intent(out) :: Hamiltonian(:, :)
+        complex*16, intent(out) :: Hamiltonian(:, :)
 
         integer :: i, j, N
 

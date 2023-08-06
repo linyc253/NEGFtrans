@@ -139,12 +139,12 @@ contains
             
         end subroutine GreensFunction_tri_solver
 
-        function coefficient_simpson(i, N, l_bound, u_bound) result(coefficient)
+        function coefficient_simpson(i, N, a, b) result(coefficient)
             ! Provide the scalar factor (c_i) of simpson integral method
-            ! \[\int_{l_bound}^{u_bound} f(x) dx = \sum_i c_i f(x_i)\]
+            ! \[\int_{a}^{b} f(x) dx = \sum_i c_i f(x_i)\]
             ! The index "i" start from 1 ~ N (Fortran convention)
             integer, intent(in) :: i, N
-            complex*16, intent(in) :: l_bound, u_bound
+            complex*16, intent(in) :: a, b
             complex*16 :: coefficient
 
             if(mod(N, 2) == 1) then
@@ -174,19 +174,21 @@ contains
 
             end if
 
-            coefficient = coefficient * (u_bound - l_bound) / (N - 1)
+            coefficient = coefficient * (b - a) / (N - 1)
 
         end function coefficient_simpson
 
-        function value_simpson(i, N, l_bound, u_bound) result(val)
+        function value_simpson(i, N, a, b) result(val)
             ! Provide the grid value (x_i) of simpson integral method
-            ! \[\int_{l_bound}^{u_bound} f(x) dx = \sum_i c_i f(x_i)\]
+            ! \[\int_{a}^{b} f(x) dx = \sum_i c_i f(x_i)\]
             ! The index "i" start from 1 ~ N (Fortran convention)
             integer, intent(in) :: i, N
-            complex*16, intent(in) :: l_bound, u_bound
+            complex*16, intent(in) :: a, b
             complex*16 :: val
 
-            val = (i - 1) * (u_bound - l_bound) / (N - 1) + l_bound
+            val = (i - 1) * (b - a) / (N - 1) + a
 
         end function value_simpson
+
+        
 end module
