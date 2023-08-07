@@ -5,7 +5,7 @@ module grid
     private
     public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
     Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, sub_Hamiltonian, &
-    print_c_matrix, NonLocalPotential_RealToPlanewave
+    print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
         ! Transform a local potential in real space into the matrix element in plane wave basis
@@ -261,6 +261,79 @@ contains
         end do
 
     end subroutine sub_Hamiltonian
+
+    subroutine E_minus_H_construction(Hamiltonian, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
+        kx, ky, V_L, V_R, E_minus_H)
+        ! Construct the diagonal elements of the matrix: E_minus_H
+        ! Note that the E_minus_H is scaled by 2\Delta^2 so that the off-diagonal
+        !  terms become identity (see Latex note for details)
+        complex*16, intent(in) :: Hamiltonian(:, :, :)
+        complex*16, intent(in) :: energy
+        integer, intent(in) :: nx_grid(:), ny_grid(:)
+        real*8, intent(in) :: Lx, Ly, Lz, kx, ky, V_L, V_R
+        complex*16, intent(out) :: E_minus_H(:, :, :)
+
+        integer :: i, j, k, N, N_z
+        real*8 :: delta
+        complex*16, allocatable :: QR(:), QT(:)
+
+        include 'constant.f90'
+
+        N = size(Hamiltonian, 1)
+        N_z = size(Hamiltonian, 3)
+        delta = Lz / N_z
+
+        allocate(QR(N), QT(N))
+        do i=1, N
+            QR(i) = sqrt(2 * (energy - V_L) - (2 * nx_grid(i) * pi / Lx + kx) ** 2 &
+            - (2 * ny_grid(i) * pi / Ly + ky) ** 2)
+            QT(i) = sqrt(2 * (energy - V_R) - (2 * nx_grid(i) * pi / Lx + kx) ** 2 &
+            - (2 * ny_grid(i) * pi / Ly + ky) ** 2)
+        end do
+
+        ! (-H)
+        do k=1, N_z
+            do j=1, N
+                do i=1, N
+                    E_minus_H(i, j, k) = -Hamiltonian(i, j, k)
+                end do
+            end do
+        end do
+
+        ! (EI-H)
+        do k=1, N_z
+            do i=1, N
+                E_minus_H(i, i, k) = E_minus_H(i, i, k) + energy
+            end do
+        end do
+
+        ! 2\Delta^2 (EI-H)
+        do k=1, N_z
+            do j=1, N
+                do i=1, N
+                    E_minus_H(i, j, k) = E_minus_H(i, j, k) * (2 * delta ** 2)
+                end do
+            end do
+        end do
+
+        ! 2\Delta^2 (EI-H) - 2I
+        do k=1, N_z
+            do i=1, N
+                E_minus_H(i, i, k) = E_minus_H(i, i, k) - 2.D0
+            end do
+        end do
+
+        ! Left self energy
+        do i=1, N
+            E_minus_H(i, i, 1) = E_minus_H(i, i, 1) + exp(complex(0, 1.D0) * QR(i) * delta)
+        end do
+
+        ! Right self energy
+        do i=1, N
+            E_minus_H(i, i, N_z) = E_minus_H(i, i, N_z) + exp(complex(0, 1.D0) * QT(i) * delta)
+        end do
+
+    end subroutine E_minus_H_construction
 
     function PlaneWaveBasis_construction_findsize(ENCUT, Lx, Ly) result(N)
         ! Calculate the size (N) of the planewave grid by ENCUT
