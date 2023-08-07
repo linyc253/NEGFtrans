@@ -1,7 +1,7 @@
 module negf
     implicit none
     private
-    public GreensFunction_tri_solver, coefficient_simpson, value_simpson
+    public GreensFunction_tri_solver, coefficient_simpson, value_simpson, fermi_func
 contains
     subroutine inverse(Matrix, inv_Matrix)
         complex*16, intent(in) :: Matrix(:, :)
@@ -189,6 +189,14 @@ contains
             val = (i - 1) * (b - a) / (N - 1) + a
 
         end function value_simpson
+
+        function fermi_func(energy, mu, temperature) result(f_E)
+            implicit none
+            real*8, intent(in) :: energy, mu, temperature
+            real*8 :: f_E
+            include 'constant.f90'
+            f_E = 1D0 / (exp((energy - mu) / (k_B * temperature)) + 1)
+        end function fermi_func
 
         
 end module
