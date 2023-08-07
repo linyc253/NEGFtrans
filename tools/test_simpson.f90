@@ -3,11 +3,11 @@ program test_simpson
     ! gfortran ../tools/test_simpson.f90 -o test_simpson.x negf.o -llapack -lblas
     use negf
     implicit none
-    integer, parameter :: N_integral = 9
-    complex*16, parameter :: l_bound = 0.D0, u_bound = 1.D0
+    integer, parameter :: N_integral = 20
+    real*8, parameter :: l_bound = 0.D0, u_bound = 1.D0
 
     integer :: i
-    complex*16 :: sum
+    real*8 :: sum
 
     sum = 0.D0
     do i=1, N_integral
@@ -16,8 +16,8 @@ program test_simpson
     end do
 
     print '(f35.30)', 1.D0 - exp(-1.D0)
-    print '(f35.30)', real(sum)
-    print *, "ERROR =", 1.D0 - exp(-1.D0) - real(sum)
+    print '(f35.30)', sum
+    print *, "ERROR =", 1.D0 - exp(-1.D0) - sum
 
     
 end program test_simpson

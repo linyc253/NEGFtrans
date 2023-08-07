@@ -144,8 +144,8 @@ contains
             ! \[\int_{a}^{b} f(x) dx = \sum_i c_i f(x_i)\]
             ! The index "i" start from 1 ~ N (Fortran convention)
             integer, intent(in) :: i, N
-            complex*16, intent(in) :: a, b
-            complex*16 :: coefficient
+            real*8, intent(in) :: a, b
+            real*8 :: coefficient
 
             if(mod(N, 2) == 1) then
                 ! Simpson 1/3 rule apply to all
@@ -183,8 +183,8 @@ contains
             ! \[\int_{a}^{b} f(x) dx = \sum_i c_i f(x_i)\]
             ! The index "i" start from 1 ~ N (Fortran convention)
             integer, intent(in) :: i, N
-            complex*16, intent(in) :: a, b
-            complex*16 :: val
+            real*8, intent(in) :: a, b
+            real*8 :: val
 
             val = (i - 1) * (b - a) / (N - 1) + a
 
