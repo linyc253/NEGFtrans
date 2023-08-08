@@ -17,14 +17,16 @@ program main
     use grid
 
     implicit none
-    real*8 :: V_L, V_R, EPSILON, TEMPERATURE, LX, LY, LZ, ENCUT
-    integer :: NGX, NGY
-    namelist /INPUT/ V_L, V_R, EPSILON, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT
+    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT
+    integer :: NGX, NGY, N_circle, N_line_per_eV
+    namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, N_circle, N_line_per_eV
 
-    integer :: N_x, N_y, N_z, N, i, j, k, STATUS
-    real*8 :: kx, ky
-    real*8, allocatable :: V_real(:, :, :)
-    complex*16, allocatable :: V_reciprocal(:, :), Hamiltonian(:, :, :)
+    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job
+    real*8 :: kx, ky, circle_L, circle_R, line_L, line_R, E_c, E_R, theta
+    complex*16 :: energy
+    real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
+    complex*16, allocatable :: V_reciprocal(:, :), Hamiltonian(:, :, :), E_minus_H(:, :, :), G_Function(:, :, :, :)&
+    , GreenDiag(:, :, :)
     integer, allocatable :: nx_grid(:), ny_grid(:)
 
     include 'constant.f90'
@@ -49,7 +51,8 @@ program main
     !===Initialize Parameters===
     V_L = 0.D0 ! eV
     V_R = 0.D0 ! eV
-    EPSILON = 1.D-5 ! Hartree
+    MU = 5.568D0 ! eV (correspond to RS=3.0, i.e. Au)
+    ETA = 1.D-5 ! Hartree
     TEMPERATURE = 300.D0 ! K
     LX = 0.D0 ! Angstrom
     LY = 0.D0 ! Angstrom
@@ -57,6 +60,8 @@ program main
     
     NGX = 0
     NGY = 0
+    N_circle = 40 ! (points/pi)
+    N_line_per_eV = 500 ! (points/eV)
 
     !===Read Files===
     write(16, *) "Read in INPUT..."
@@ -94,7 +99,7 @@ program main
     !===Convert unit===
     V_L = V_L / hartree ! eV -> hartree
     V_R = V_R / hartree ! eV -> hartree
-    EPSILON = EPSILON ! Hartree
+    ETA = ETA ! Hartree
     TEMPERATURE = TEMPERATURE ! K
     LX = LX / a_0 ! Angstrom -> bohr
     LY = LY / a_0 ! Angstrom -> bohr
@@ -108,7 +113,8 @@ program main
 
     allocate(V_reciprocal(-NGX/2: NGX/2, -NGY/2: NGY/2))
     N = PlaneWaveBasis_construction_findsize(ENCUT, Lx, Ly)
-    allocate(nx_grid(N), ny_grid(N), Hamiltonian(N, N, N_z))
+    allocate(nx_grid(N), ny_grid(N), Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))
+    allocate(G_function(N, N, N_z, 3), GreenDiag(N_x, N_y, N_z), Density(N_x, N_y, N_z))
     call PlaneWaveBasis_construction(ENCUT, Lx, Ly, nx_grid, ny_grid)
 
     write(16, *) "Grid size in x, y direction is: N =", N
@@ -127,13 +133,78 @@ program main
         call sub_Hamiltonian(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian(:, :, k))
     end do
     
-    !===Main NEGF calculation===
-
+    !===NEGF integration===
     
+    circle_L = minval(V_real) - 1.D0 / hartree
+                               !  ^ This improve precision significantly 
+    circle_R = MU - 6 * k_B * temperature
+    line_L = circle_R
+    line_R = MU + 6 * k_B * temperature
 
+    E_c = (circle_R + circle_L) / 2
+    E_R = (circle_R - circle_L) / 2
+    N_line = IDNINT(N_line_per_eV * ((line_R - line_L) * hartree))
+    do i_job=1, N_circle + N_line
+        if(i_job <= N_circle) then
+            ! CASE1
+            theta = value_simpson(i_job, N_circle, 0.D0, pi)
+            energy = E_c + E_R * exp(complex(0.D0, theta))
+        else
+            ! CASE2
+            energy = value_simpson(i_job - N_circle, N_line, line_L, line_R)
+        end if
+
+        ! Main calculation
+        call E_minus_H_construction(Hamiltonian, energy + complex(0.D0, ETA), nx_grid, ny_grid, Lx, Ly, Lz, &
+         kx, ky, V_L, V_R, E_minus_H)
+        call GreensFunction_tri_solver(E_minus_H, G_Function)
+        do k=1, N_z
+            call Greensfunction_PlanewaveToReal(G_Function(:, :, k, 1), nx_grid, ny_grid, GreenDiag(:, :, k))
+        end do
+
+        Density(:, :, :) = 0.D0
+        if(i_job <= N_circle) then
+            ! CASE1
+            do k=1, N_z
+                do j=1, N_y
+                    do i=1, N_x
+                        Density(i, j, k) = Density(i, j, k) + &
+                         2.D0 / pi * coefficient_simpson(i_job, N_circle, 0.D0, pi) * &
+                         aimag(complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * GreenDiag(i, j, k))
+                    end do
+                end do
+            end do
+        else
+            ! CASE2
+            do k=1, N_z
+                do j=1, N_y
+                    do i=1, N_x
+                        Density(i, j, k) = Density(i, j, k) - &
+                         2.D0 / pi * coefficient_simpson(i_job - N_circle, N_line, line_L, line_R) * &
+                         aimag(fermi_func(real(energy), MU, TEMPERATURE) * GreenDiag(i, j, k))
+                    end do
+                end do
+            end do
+
+        end if
+
+    end do
 
     !===========================================END==============================================
     !============================================================================================
 
+    write(16, *) "NEGF calculation DONE"
+    write(16, *) "Writing DENSITY..."
+
+    open(unit=18, file="DENSITY")
+    write(17, '(3I5)') N_x, N_y, N_z
+    write(17, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
+    close(17)
+
+    write(16,*) "********************"
+    write(16,*) "*                  *"
+    write(16,*) "*      DONE        *"
+    write(16,*) "*                  *"
+    write(16,*) "********************"
     close(16)
 end program main
