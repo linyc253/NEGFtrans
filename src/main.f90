@@ -13,7 +13,7 @@
 !                                   By YI-CHENG LIN at 2023/6/27
 !**********************************************************************
 program main
-    use negf
+    use math_kernel
     use grid
 
     implicit none

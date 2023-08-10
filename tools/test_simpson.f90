@@ -1,7 +1,7 @@
 program test_simpson
     ! To compile, enter the build/ directory, and type:
-    ! gfortran ../tools/test_simpson.f90 -o test_simpson.x negf.o -llapack -lblas
-    use negf
+    ! gfortran ../tools/test_simpson.f90 -o test_simpson.x math_kernel.o -llapack -lblas
+    use math_kernel
     implicit none
     integer, parameter :: N_integral = 20
     real*8, parameter :: l_bound = 0.D0, u_bound = 1.D0

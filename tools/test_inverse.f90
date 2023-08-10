@@ -1,7 +1,7 @@
 program test_inverse
     ! To compile, enter the build/ directory, and type:
-    ! gfortran ../tools/test_inverse.f90 -o test_inverse.x negf.o -llapack -lblas
-    use negf
+    ! gfortran ../tools/test_inverse.f90 -o test_inverse.x math_kernel.o -llapack -lblas
+    use math_kernel
     implicit none
     integer, parameter :: N = 30, N_z = 50
     real*8 :: rand_real, rand_imag, start_time, end_time, sum

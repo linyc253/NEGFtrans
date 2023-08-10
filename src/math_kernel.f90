@@ -1,4 +1,4 @@
-module negf
+module math_kernel
     implicit none
     private
     public GreensFunction_tri_solver, coefficient_simpson, value_simpson, fermi_func
@@ -200,4 +200,4 @@ contains
         end function fermi_func
 
         
-end module
+end module math_kernel

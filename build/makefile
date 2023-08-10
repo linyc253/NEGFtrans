@@ -5,7 +5,7 @@ TARGET=NEGFtrans
 INCLUDE= -I/usr/local/include
 LIBS=-lfftw3 -llapack -lblas
 
-OBJS=grid.o negf.o
+OBJS=grid.o math_kernel.o
 
 # Check tab by: cat -t makefile
 all: $(TARGET).x
