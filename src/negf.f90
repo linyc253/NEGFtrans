@@ -2,23 +2,29 @@ module negf
     implicit none
     private
     public GreensFunction_tri_solver, coefficient_simpson, value_simpson, fermi_func
+    logical :: reset = .true.
 contains
     subroutine inverse(Matrix, inv_Matrix)
         complex*16, intent(in) :: Matrix(:, :)
         complex*16, intent(out) :: inv_Matrix(:, :)
-        complex*16, allocatable :: work(:)
-        integer, allocatable :: IPIV(:)
-        integer :: i, j, N, NB, STATUS, ilaenv
+        complex*16, allocatable, save :: work(:)
+        integer, allocatable, save :: IPIV(:)
+        integer, save :: N, NB
+        integer :: i, j, STATUS, ilaenv
+        if(reset) then
+            N = size(Matrix, 1)
+            NB = ilaenv(1, "zgetri", "", N, N, -1, -1)
+            if(NB < 1) NB = N
+            allocate(IPIV(N), work(NB * N))
+            reset = .false.
+        end if
 
-        N = size(Matrix, 1)
         do j=1, N
             do i=1, N
                 inv_Matrix(i, j) = Matrix(i, j)
             end do
         end do
-        NB = ilaenv(1, "zgetri", "", N, N, -1, -1)
-        if(NB < 1) NB = N
-        allocate(IPIV(N), work(NB * N))
+        
         call zgetrf(N, N, inv_Matrix, N, IPIV, STATUS)
         call zgetri(N, inv_Matrix, N, IPIV, work, NB * N, STATUS)
         
@@ -27,17 +33,9 @@ contains
     subroutine matrix_product(A, B, C)
         complex*16, intent(in) :: A(:, :), B(:, :)
         complex*16, intent(out) :: C(:, :)
-        integer :: N, i, j, k
+        integer :: N
         N = size(A, 1)
-
-        C(:, :) = 0.D0
-        do j=1, N
-            do i=1, N
-                do k=1, N
-                    C(i, j) = C(i, j) + A(i, k) * B(k, j)
-                end do
-            end do
-        end do
+        call zgemm('N', 'N', N, N, N, complex(1.D0, 0.D0), A, N, B, N, complex(0.D0, 0.D0), C, N)
     end subroutine
 
     subroutine GreensFunction_tri_solver(G_inv_D, G_Function)
@@ -137,6 +135,7 @@ contains
                 end do
             end do
             
+            reset = .true.
         end subroutine GreensFunction_tri_solver
 
         function coefficient_simpson(i, N, a, b) result(coefficient)
