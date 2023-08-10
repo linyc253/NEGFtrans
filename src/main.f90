@@ -21,8 +21,9 @@ program main
     integer :: NGX, NGY, N_circle, N_line_per_eV
     namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, N_circle, N_line_per_eV
 
-    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job
-    real*8 :: kx, ky, circle_L, circle_R, line_L, line_R, E_c, E_R, theta
+    integer :: N_x, N_y, N_z, N, i, j, k, ii, STATUS, N_line, i_job
+    real :: start_time, end_time
+    real*8 :: kx, ky, circle_L, circle_R, line_L, line_R, E_c, E_R, theta, sum_density, rescale_factor
     complex*16 :: energy
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
     complex*16, allocatable :: V_reciprocal(:, :), Hamiltonian(:, :, :), E_minus_H(:, :, :), G_Function(:, :, :, :)&
@@ -32,6 +33,7 @@ program main
     include 'constant.f90'
 
     open(unit=16, file="OUTPUT")
+    call cpu_time(start_time)
     write(16, *) "**********************************************************************"
     write(16, *) " CALCULATES THE DENSITY AND TRANSMISSION OF A GIVEN POTENTIAL"
     write(16, *) "   Using NEGF to calculate density and transmission coefficient with "
@@ -57,6 +59,7 @@ program main
     LX = 0.D0 ! Angstrom
     LY = 0.D0 ! Angstrom
     LZ = 0.D0 ! Angstrom
+    ENCUT = 100.D0 ! eV
     
     NGX = 0
     NGY = 0
@@ -99,11 +102,20 @@ program main
     !===Convert unit===
     V_L = V_L / hartree ! eV -> hartree
     V_R = V_R / hartree ! eV -> hartree
+    MU = MU / hartree ! eV -> hartree
     ETA = ETA ! Hartree
     TEMPERATURE = TEMPERATURE ! K
     LX = LX / a_0 ! Angstrom -> bohr
     LY = LY / a_0 ! Angstrom -> bohr
     LZ = LZ / a_0 ! Angstrom -> bohr
+    ENCUT = ENCUT / hartree ! eV -> hartree
+    do k=1, N_z
+        do j=1, N_y
+            do i=1, N_x
+                V_real(i, j, k) = V_real(i, j, k) / hartree ! eV -> hartree
+            end do
+        end do
+    end do
 
 
 
@@ -144,6 +156,12 @@ program main
     E_c = (circle_R + circle_L) / 2
     E_R = (circle_R - circle_L) / 2
     N_line = IDNINT(N_line_per_eV * ((line_R - line_L) * hartree))
+    write(16, *) "Total energy points for integration:", N_circle + N_line
+    write(16, *) "circle_L : circle_R = ", circle_L, ":", circle_R!!
+    write(16, *) "line_L : line_R = ", line_L, ":", line_R!!
+    close(16)
+    Density(:, :, :) = 0.D0
+    sum_density = 0.D0
     do i_job=1, N_circle + N_line
         if(i_job <= N_circle) then
             ! CASE1
@@ -158,11 +176,21 @@ program main
         call E_minus_H_construction(Hamiltonian, energy + complex(0.D0, ETA), nx_grid, ny_grid, Lx, Ly, Lz, &
          kx, ky, V_L, V_R, E_minus_H)
         call GreensFunction_tri_solver(E_minus_H, G_Function)
+        do ii=1, 3
+            do k=1, N_z
+                do j=1, N
+                    do i=1, N
+                        ! Rescale to compensate the extra factor in E_minus_H
+                        G_Function(i, j, k, ii) = G_Function(i, j, k, ii) * 2.D0 * (LZ / N_z) ** 2
+                    end do
+                end do
+            end do
+        end do
         do k=1, N_z
             call Greensfunction_PlanewaveToReal(G_Function(:, :, k, 1), nx_grid, ny_grid, GreenDiag(:, :, k))
         end do
 
-        Density(:, :, :) = 0.D0
+        
         if(i_job <= N_circle) then
             ! CASE1
             do k=1, N_z
@@ -181,26 +209,44 @@ program main
                     do i=1, N_x
                         Density(i, j, k) = Density(i, j, k) - &
                          2.D0 / pi * coefficient_simpson(i_job - N_circle, N_line, line_L, line_R) * &
-                         aimag(fermi_func(real(energy), MU, TEMPERATURE) * GreenDiag(i, j, k))
+                         aimag(fermi_func(dble(energy), MU, TEMPERATURE) * GreenDiag(i, j, k))
                     end do
                 end do
             end do
 
         end if
-
+        
+        open(unit=16, file="OUTPUT", status="old", position="append")
+        write(16, '(A2, I4, A1, I4)') "=>", i_job, "/", N_circle + N_line
+        close(16)
     end do
 
     !===========================================END==============================================
     !============================================================================================
 
+    ! Rescale　density
+    rescale_factor = dble(N_z) / (LX * LY * LZ * a_0 ** 3)
+    do k=1, N_z
+        do j=1, N_y
+            do i=1, N_x
+                Density(i, j, k) = Density(i, j, k) * rescale_factor ! unit: 1/Angstrom^3
+            end do
+        end do
+    end do
+
+    !　Write out data
+    open(unit=16, file="OUTPUT", status="old", position="append")
     write(16, *) "NEGF calculation DONE"
+    write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ * a_0 ** 3) / (N_x * N_y * N_z)
     write(16, *) "Writing DENSITY..."
 
     open(unit=18, file="DENSITY")
-    write(17, '(3I5)') N_x, N_y, N_z
-    write(17, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
-    close(17)
+    write(18, '(3I5)') N_x, N_y, N_z
+    write(18, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
+    close(18)
 
+    call cpu_time(end_time)
+    write(16,*) "CPU time: ", end_time - start_time, "s"
     write(16,*) "********************"
     write(16,*) "*                  *"
     write(16,*) "*      DONE        *"
