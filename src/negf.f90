@@ -15,6 +15,8 @@ contains
             N = size(Matrix, 1)
             NB = ilaenv(1, "zgetri", "", N, N, -1, -1)
             if(NB < 1) NB = N
+            if(allocated(IPIV)) deallocate(IPIV)
+            if(allocated(work)) deallocate(work)
             allocate(IPIV(N), work(NB * N))
             reset = .false.
         end if
