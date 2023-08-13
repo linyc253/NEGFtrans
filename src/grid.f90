@@ -4,7 +4,7 @@ module grid
     include 'fftw3.f03'
     private
     public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
-    Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, sub_Hamiltonian, &
+    Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, Hamiltonian_construction, &
     print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
@@ -235,32 +235,35 @@ contains
         end do
     end subroutine NonLocalPotential_RealToPlanewave
 
-    subroutine sub_Hamiltonian(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
+    subroutine Hamiltonian_construction(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
         ! Construct the Hamiltonian in transverse direction (xy-direction) for each z
         integer, intent(in) :: nx_grid(:), ny_grid(:)
-        complex*16, allocatable, intent(in) :: V_reciprocal(:, :)
+        complex*16, allocatable, intent(in) :: V_reciprocal(:, :, :)
         real*8, intent(in) :: Lx, Ly, kx, ky
-        complex*16, intent(out) :: Hamiltonian(:, :)
+        complex*16, intent(out) :: Hamiltonian(:, :, :)
 
-        integer :: i, j, N
+        integer :: i, j, k, N, N_z
 
         include 'constant.f90'
 
         N = size(nx_grid)
+        N_z = size(Hamiltonian, 3)
 
-        do j=1, N
+        do k= 1, N_z
+            do j=1, N
+                do i=1, N
+                    Hamiltonian(i, j, k) =&
+                    V_reciprocal(nx_grid(i) - nx_grid(j), ny_grid(i) - ny_grid(j), k)
+                end do
+            end do
+
             do i=1, N
-                Hamiltonian(i, j) =&
-                 V_reciprocal(nx_grid(i) - nx_grid(j), ny_grid(i) - ny_grid(j))
+                Hamiltonian(i, i, k) = Hamiltonian(i, i, k) + &
+                ((2 * nx_grid(i) * pi / Lx + kx) ** 2 + (2 * ny_grid(i) * pi / Ly + ky) ** 2) / 2
             end do
         end do
 
-        do i=1, N
-            Hamiltonian(i, i) = Hamiltonian(i, i) + &
-             ((2 * nx_grid(i) * pi / Lx + kx) ** 2 + (2 * ny_grid(i) * pi / Ly + ky) ** 2) / 2
-        end do
-
-    end subroutine sub_Hamiltonian
+    end subroutine Hamiltonian_construction
 
     subroutine E_minus_H_construction(Hamiltonian, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
         kx, ky, V_L, V_R, E_minus_H)

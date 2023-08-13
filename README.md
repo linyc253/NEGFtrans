@@ -48,16 +48,17 @@ There are four important files in `src/` directory
     The main program, I call it FIRST layer of the code. Most of the input/output are here. Unit conversion is also done here. I've tried my best to avoid any math formula appear here so that the MPI calculation part is kept as clean and tidy as possible.
 1. negf.f90
 
-    This is the SECOND layer of the code. Most of the subroutine are just a taken out from main program, so that main.f90 is not going to mess up. One should never try to use any of the subroutine as a tool, I promise that you would mess up with the variable.
+    This is the SECOND layer of the code. Most of the subroutine are just a "take out" from main program, so that `main.f90` is not going to mess up. One should never try to use any of the subroutine as a tool because they are just too specific, if you insist, I promise that it would blow up in the end.
 
     Another thing worth notice is that all the physical input parameters (those parameters with unit, except array) are sent in to the subroutine by a derived type variable: atomic. This is to avoid hundreds of variable being passed in the subroutine.
 
 1. grid.f90
 
-    This is the THIRD layer of the code. Containing most of the subroutine dealing with basis transformation, building of Hamiltonian, etc. Note that all the input parameters in `atomic` are passed from `negf.f90` separately, and they go back to original name (e.g. `atomic%LX` -> `LX`) in all the subroutine here (`grid.f90`). So don't get confused with the name in `main.f90`, where they represent parameters in conventional unit system (Angstrom, eV).
+    This is the THIRD layer of the code. Containing most of the subroutine dealing with basis transformation, construction of Hamiltonian, etc. These subroutines may be use as a tool in other code, provided that you know what they are really doing. Note that all the input parameters in `atomic` are passed from `negf.f90` separately, and they go back to original name (e.g. `atomic%LX` -> `LX`) in all the subroutine here (`grid.f90`). So don't get confused with the name in `main.f90`, where they represent parameters in conventional unit system (Angstrom, eV).
 
 1. math_kernel.f90
-    This is the THIRD layer of the code. Containing most of the subroutine that dealing with math formula (e.g. matrix inverse). The logic of the naming is similar to `grid.f90`.
+
+    This is the THIRD layer of the code. Containing most of the subroutine that dealing with math formula (e.g. matrix inverse). These subroutines may be use as a tool in other code as well. The logic of the naming is similar to `grid.f90`.
 
 
 

@@ -15,27 +15,20 @@
 program main
     use math_kernel
     use grid
+    use negf
 
     implicit none
-    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT
+    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
     integer :: NGX, NGY, N_circle, N_line_per_eV
-    namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, N_circle, N_line_per_eV
-    type :: t_parameters
-        real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT
-    end type
+    namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, N_circle, N_line_per_eV, GAP
+    
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
-
-    integer :: N_x, N_y, N_z, N, i, j, k, ii, STATUS, N_line, i_job
-    type :: t_timer
-        real :: start, end, sum = 0.0
-    end type
+    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time
-    real*8 :: kx, ky, circle_L, circle_R, line_L, line_R, E_c, E_R, theta, sum_density, rescale_factor
-    complex*16 :: energy
+    real*8 :: rescale_factor
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
-    complex*16, allocatable :: V_reciprocal(:, :), Hamiltonian(:, :, :), E_minus_H(:, :, :), G_Function(:, :, :, :)&
-    , GreenDiag(:, :, :)
+    complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :)
     integer, allocatable :: nx_grid(:), ny_grid(:)
 
     include 'constant.f90'
@@ -68,6 +61,7 @@ program main
     LY = 0.D0 ! Angstrom
     LZ = 0.D0 ! Angstrom
     ENCUT = 100.D0 ! eV
+    GAP = 6.D0 ! k_B * TEMPERATURE
     
     NGX = 0
     NGY = 0
@@ -102,12 +96,13 @@ program main
 
     if(NGX == 0) NGX = (N_x / 3) * 2
     if(NGY == 0) NGY = (N_y / 3) * 2
-    ! UNDONE: Check NGX, NGY
+    !XXXXXXXXXXXXXXXXXXXXXX UNDONE: Check NGX, NGY
 
     write(16, *) "The parameters are:"
     write(16, INPUT)
 
     !===Convert unit===
+    ! Note that the name is changed from "parameter" to "atomic%parameter"
     atomic%V_L = V_L / hartree ! eV -> hartree
     atomic%V_R = V_R / hartree ! eV -> hartree
     atomic%MU = MU / hartree ! eV -> hartree
@@ -117,6 +112,7 @@ program main
     atomic%LY = LY / a_0 ! Angstrom -> bohr
     atomic%LZ = LZ / a_0 ! Angstrom -> bohr
     atomic%ENCUT = ENCUT / hartree ! eV -> hartree
+    atomic%GAP = GAP * k_B * atomic%TEMPERATURE ! (k_B T) -> hartree
     do k=1, N_z
         do j=1, N_y
             do i=1, N_x
@@ -131,122 +127,53 @@ program main
     write(16, *) "----------"
     write(16, *) "Layout the grid..."
 
-    allocate(V_reciprocal(-NGX/2: NGX/2, -NGY/2: NGY/2))
+    allocate(Density(N_x, N_y, N_z))
+    allocate(V_reciprocal(-NGX/2: NGX/2, -NGY/2: NGY/2), V_reciprocal_all(-NGX/2: NGX/2, -NGY/2: NGY/2, 1: N_z))
+
     N = PlaneWaveBasis_construction_findsize(atomic%ENCUT, atomic%LX, atomic%LY)
-    allocate(nx_grid(N), ny_grid(N), Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))
-    allocate(G_function(N, N, N_z, 3), GreenDiag(N_x, N_y, N_z), Density(N_x, N_y, N_z))
+    allocate(nx_grid(N), ny_grid(N))
     call PlaneWaveBasis_construction(atomic%ENCUT, atomic%LX, atomic%LY, nx_grid, ny_grid)
 
     write(16, *) "Grid size in x, y direction is: N =", N
     write(16, *) "Grid size in z direction is: N_z =", N_z
-    write(16, *) "The calculation time is proportional to (N^3 N_z)"
+    write(16, *) "The 'Inverse Matrix' time is proportional to (N^3 N_z)"
     write(16, *) "----------"
     write(16, *) "NEGF calculation start..."
+    close(16)
 
     !============================================================================================
     !==========================================START=============================================
-    !===Construct the Hamiltonian===
-    kx = 0.D0 ! Temporary
-    ky = 0.D0 ! Temporary
+
+    ! STEP 1. Construct 'V_reciprocal_all', single-thread
+    call cpu_time(RtoP_time%start)
     do k=1, N_z
-        call cpu_time(RtoP_time%start)
         call LocalPotential_RealToPlanewave(V_real(:, :, k), V_reciprocal)
-        call cpu_time(RtoP_time%end)
-        RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
-
-        call sub_Hamiltonian(nx_grid, ny_grid, atomic%LX, atomic%LY, kx, ky, V_reciprocal, Hamiltonian(:, :, k))
+        do j= -NGY/2, NGY/2
+            do i= -NGX/2, NGX/2
+                V_reciprocal_all(i, j, k) = V_reciprocal(i, j)
+            end do
+        end do
     end do
-    
-    
-    !===NEGF integration===
-    
-    circle_L = minval(V_real) - 1.D0 / hartree
-                               !  ^ This improve precision significantly 
-    circle_R = atomic%MU - 6 * k_B * atomic%TEMPERATURE
-    line_L = circle_R
-    line_R = atomic%MU + 6 * k_B * atomic%TEMPERATURE
+    call cpu_time(RtoP_time%end)
+    RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
 
-    E_c = (circle_R + circle_L) / 2
-    E_R = (circle_R - circle_L) / 2
-    N_line = IDNINT(N_line_per_eV * ((line_R - line_L) * hartree))
-    write(16, *) "Total energy points for integration:", N_circle + N_line
-    write(16, *) "circle_L : circle_R = ", circle_L, ":", circle_R!!
-    write(16, *) "line_L : line_R = ", line_L, ":", line_R!!
-    close(16)
+    ! STEP 2. Use NEGF to find 'Density', multi-thread
     Density(:, :, :) = 0.D0
-    sum_density = 0.D0
+    N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
     do i_job=1, N_circle + N_line
-        if(i_job <= N_circle) then
-            ! CASE1
-            theta = value_simpson(i_job, N_circle, 0.D0, pi)
-            energy = E_c + E_R * exp(complex(0.D0, theta))
-        else
-            ! CASE2
-            energy = value_simpson(i_job - N_circle, N_line, line_L, line_R)
-        end if
+        ! Density = Density + Density_contribution_of_that_energy_point
+        call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, Density,&
+        inverse_time, PtoR_time)
 
-        ! Main calculation
-        call E_minus_H_construction(Hamiltonian, energy + complex(0.D0, atomic%ETA), nx_grid, ny_grid, atomic%LX, &
-         atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, E_minus_H)
-
-        call cpu_time(inverse_time%start)
-        call GreensFunction_tri_solver(E_minus_H, G_Function)
-        call cpu_time(inverse_time%end)
-        inverse_time%sum = inverse_time%sum + inverse_time%end - inverse_time%start
-
-        do ii=1, 3
-            do k=1, N_z
-                do j=1, N
-                    do i=1, N
-                        ! Rescale to compensate the extra factor in E_minus_H
-                        G_Function(i, j, k, ii) = G_Function(i, j, k, ii) * 2.D0 * (atomic%LZ / N_z) ** 2
-                    end do
-                end do
-            end do
-        end do
-
-        call cpu_time(PtoR_time%start)
-        do k=1, N_z
-            call Greensfunction_PlanewaveToReal(G_Function(:, :, k, 1), nx_grid, ny_grid, GreenDiag(:, :, k))
-        end do
-        call cpu_time(PtoR_time%end)
-        PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
-
-        
-        if(i_job <= N_circle) then
-            ! CASE1
-            do k=1, N_z
-                do j=1, N_y
-                    do i=1, N_x
-                        Density(i, j, k) = Density(i, j, k) + &
-                         2.D0 / pi * coefficient_simpson(i_job, N_circle, 0.D0, pi) * &
-                         aimag(complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * GreenDiag(i, j, k))
-                    end do
-                end do
-            end do
-        else
-            ! CASE2
-            do k=1, N_z
-                do j=1, N_y
-                    do i=1, N_x
-                        Density(i, j, k) = Density(i, j, k) - &
-                         2.D0 / pi * coefficient_simpson(i_job - N_circle, N_line, line_L, line_R) * &
-                         aimag(fermi_func(dble(energy), atomic%MU, atomic%TEMPERATURE) * GreenDiag(i, j, k))
-                    end do
-                end do
-            end do
-
-        end if
-        
         open(unit=16, file="OUTPUT", status="old", position="append")
-        write(16, '(A2, I4, A1, I4)') "=>", i_job, "/", N_circle + N_line
+        write(16, '(A2, I4, A1, I4)') "=>", i_job, " /", N_circle + N_line
         close(16)
     end do
-
     !===========================================END==============================================
     !============================================================================================
+    
 
-    ! Rescale　density. Unit: 1/Angstrom^3
+    ! Rescale　density. (Unit: 1/Angstrom^3)
     rescale_factor = dble(N_z) / (LX * LY * LZ)
     do k=1, N_z
         do j=1, N_y

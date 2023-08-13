@@ -5,7 +5,7 @@ TARGET=NEGFtrans
 INCLUDE= -I/usr/local/include
 LIBS=-lfftw3 -llapack -lblas
 
-OBJS=grid.o math_kernel.o
+OBJS=grid.o math_kernel.o negf.o
 
 # Check tab by: cat -t makefile
 all: $(TARGET).x
@@ -21,4 +21,4 @@ clean:
 	rm *.o *.mod $(TARGET).x
 
 #=========== Deal with dependency here============#
-#test.o:test2.o
+negf.o:grid.o math_kernel.o
