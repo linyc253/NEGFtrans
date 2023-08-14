@@ -16,6 +16,7 @@ program main
     use math_kernel
     use grid
     use negf
+    use mpi !%%
 
     implicit none
     real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
@@ -24,7 +25,7 @@ program main
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
-    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job
+    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job, rank = 0, mpi_size = 1
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time
     real*8 :: rescale_factor
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
@@ -33,23 +34,29 @@ program main
 
     include 'constant.f90'
 
-    open(unit=16, file="OUTPUT")
-    call cpu_time(total_time%start)
-    write(16, *) "**********************************************************************"
-    write(16, *) " CALCULATES THE DENSITY AND TRANSMISSION OF A GIVEN POTENTIAL"
-    write(16, *) "   Using NEGF to calculate density and transmission coefficient with "
-    write(16, *) "   real grid in z-direction, and plane wave basis in xy-direction."
-    write(16, *) " input files:"
-    write(16, *) "   INPUT"
-    write(16, *) "   POTENTIAL"
-    write(16, *) " output files:"
-    write(16, *) "   OUTPUT"
-    write(16, *) "   DENSITY"
-    write(16, *) "   TRANSMISSION"
-    write(16, *) "   LDOS (optional)"
-    write(16, *) "                                   By YI-CHENG LIN at 2023/6/27"
-    write(16, *) "**********************************************************************"
-    write(16, *) ""
+    call MPI_INIT(STATUS) !%%
+    call MPI_COMM_RANK(MPI_COMM_WORLD, rank, STATUS) !%%
+    call MPI_COMM_SIZE(MPI_COMM_WORLD, mpi_size, STATUS) !%%
+
+    if(rank == 0) then
+        open(unit=16, file="OUTPUT")
+        call cpu_time(total_time%start)
+        write(16, *) "**********************************************************************"
+        write(16, *) " CALCULATES THE DENSITY AND TRANSMISSION OF A GIVEN POTENTIAL"
+        write(16, *) "   Using NEGF to calculate density and transmission coefficient with "
+        write(16, *) "   real grid in z-direction, and plane wave basis in xy-direction."
+        write(16, *) " input files:"
+        write(16, *) "   INPUT"
+        write(16, *) "   POTENTIAL"
+        write(16, *) " output files:"
+        write(16, *) "   OUTPUT"
+        write(16, *) "   DENSITY"
+        write(16, *) "   TRANSMISSION"
+        write(16, *) "   LDOS (optional)"
+        write(16, *) "                                   By YI-CHENG LIN at 2023/6/27"
+        write(16, *) "**********************************************************************"
+        write(16, *) ""
+    end if
 
     !===Initialize Parameters===
     V_L = 0.D0 ! eV
@@ -70,7 +77,7 @@ program main
 
     !===Read Files===
     ! Read INPUT
-    write(16, *) "Read in INPUT..."
+    if(rank == 0) write(16, *) "Read in INPUT..."
     open(unit=15, file="INPUT")
     read(15, INPUT)
     close(15)
@@ -83,37 +90,37 @@ program main
         NGY = ceiling((LY / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2) + 1
     end if
 
-    ! Check LX, LY, LZ
-    if((LX == 0.D0) .or. (LY == 0.D0) .or. (LZ == 0.D0)) then
-        write(16, *) "ERROR: LX, LY, LZ must be specified in INPUT"
-        call exit(STATUS)
+    if(rank == 0) then
+        ! Check LX, LY, LZ
+        if((LX == 0.D0) .or. (LY == 0.D0) .or. (LZ == 0.D0)) then
+            write(16, *) "ERROR: LX, LY, LZ must be specified in INPUT"
+            call exit(STATUS)
+        end if
+        write(16, *) "-success-"
     end if
-    write(16, *) "-success-"
 
     ! Read POTENTIAL
-    write(16, *) "----------"
-    write(16, *) "Read in POTENTIAL..."
+    if(rank == 0) write(16, *) "----------"
+    if(rank == 0) write(16, *) "Read in POTENTIAL..."
     open(unit=17, file="POTENTIAL")
     read(17, *) N_x, N_y, N_z
     allocate(V_real(N_x, N_y, N_z))
     read(17, *) (((V_real(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
     close(17)
 
-    ! Check N_x, N_y
-    if((mod(N_x, 2) == 1) .or. (mod(N_y, 2) == 1)) then
-        write(16, *) "ERROR: The number of grid point in x & y direction must be even number"
-        call exit(STATUS)
+    if(rank == 0) then
+        ! Check N_x, N_y
+        if((mod(N_x, 2) == 1) .or. (mod(N_y, 2) == 1)) then
+            write(16, *) "ERROR: The number of grid point in x & y direction must be even number"
+            call exit(STATUS)
+        end if
+        write(16, *) "-success-"
+        write(16, *) "The size of POTENTIAL is:"
+        write(16, '(5X, 3I5)') N_x, N_y, N_z
+
+        write(16, *) "The parameters are:"
+        write(16, INPUT)
     end if
-    write(16, *) "-success-"
-    write(16, *) "The size of POTENTIAL is:"
-    write(16, '(5X, 3I5)') N_x, N_y, N_z
-
-    ! if(NGX == 0) NGX = (N_x / 3) * 2
-    ! if(NGY == 0) NGY = (N_y / 3) * 2
-    !XXXXXXXXXXXXXXXXXXXXXX UNDONE: Check NGX, NGY
-
-    write(16, *) "The parameters are:"
-    write(16, INPUT)
 
     !===Convert unit===
     ! Note that the name is changed from "parameter" to "atomic%parameter"
@@ -138,8 +145,10 @@ program main
 
 
     !===Grid layout===
-    write(16, *) "----------"
-    write(16, *) "Layout the grid..."
+    if(rank == 0) then
+        write(16, *) "----------"
+        write(16, *) "Layout the grid..."
+    end if
 
     allocate(Density(N_x, N_y, N_z))
     allocate(V_reciprocal(-NGX: NGX, -NGY: NGY), V_reciprocal_all(-NGX: NGX, -NGY: NGY, 1: N_z))
@@ -148,17 +157,19 @@ program main
     allocate(nx_grid(N), ny_grid(N))
     call PlaneWaveBasis_construction(atomic%ENCUT, atomic%LX, atomic%LY, nx_grid, ny_grid)
 
-    write(16, *) "Grid size in x, y direction is: N =", N
-    write(16, *) "Grid size in z direction is: N_z =", N_z
-    write(16, *) "The 'Inverse Matrix' time is proportional to (N^3 N_z)"
-    write(16, *) "----------"
-    write(16, *) "NEGF calculation start..."
-    close(16)
+    if(rank == 0) then
+        write(16, *) "Grid size in x, y direction is: N =", N
+        write(16, *) "Grid size in z direction is: N_z =", N_z
+        write(16, *) "The 'Inverse Matrix' time is proportional to (N^3 N_z)"
+        write(16, *) "----------"
+        write(16, *) "NEGF calculation start..."
+        close(16)
+    end if
 
     !============================================================================================
     !==========================================START=============================================
 
-    ! STEP 1. Construct 'V_reciprocal_all', single-thread
+    ! STEP 1. Construct 'V_reciprocal_all'
     call cpu_time(RtoP_time%start)
     do k=1, N_z
         call LocalPotential_RealToPlanewave(V_real(:, :, k), V_reciprocal)
@@ -171,54 +182,70 @@ program main
     call cpu_time(RtoP_time%end)
     RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
 
-    ! STEP 2. Use NEGF to find 'Density', multi-thread
+    ! STEP 2. Use NEGF to find 'Density', parallelized
     Density(:, :, :) = 0.D0
     N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
-    do i_job=1, N_circle + N_line
+
+    i_job = 1 + rank
+    do while(i_job <= N_circle + N_line)
         ! Density = Density + Density_contribution_of_that_energy_point
         call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, Density,&
         inverse_time, PtoR_time)
 
-        open(unit=16, file="OUTPUT", status="old", position="append")
-        write(16, '(A2, I4, A2, I4)') "=>", i_job, " /", N_circle + N_line
-        close(16)
+        i_job = i_job + mpi_size
+        
+        if(rank == 0) then
+            open(unit=16, file="OUTPUT", status="old", position="append")
+            write(16, '(A2, I4, A2, I4)') "=>", min(i_job - 1, N_circle + N_line), " /", N_circle + N_line
+            close(16)
+        end if
     end do
+
+    ! Collect data from different rank
+    if(rank == 0) then !%%
+        call MPI_Reduce(MPI_IN_PLACE, Density, size(Density), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+    else !%%
+        call MPI_Reduce(Density, Density, size(Density), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+    end if !%%
+
     !===========================================END==============================================
     !============================================================================================
-    
-
-    ! Rescale　density. (Unit: 1/Angstrom^3)
-    rescale_factor = dble(N_z) / (LX * LY * LZ)
-    do k=1, N_z
-        do j=1, N_y
-            do i=1, N_x
-                Density(i, j, k) = Density(i, j, k) * rescale_factor ! unit: 1/Angstrom^3
+    if(rank == 0) then
+        ! Rescale density. (Unit: 1/Angstrom^3)
+        rescale_factor = dble(N_z) / (LX * LY * LZ)
+        do k=1, N_z
+            do j=1, N_y
+                do i=1, N_x
+                    Density(i, j, k) = Density(i, j, k) * rescale_factor ! unit: 1/Angstrom^3
+                end do
             end do
         end do
-    end do
 
-    !　Write out data
-    open(unit=16, file="OUTPUT", status="old", position="append")
-    write(16, *) "NEGF calculation DONE"
-    write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ) / (N_x * N_y * N_z)
-    write(16, *) "Writing DENSITY..."
+        !　Write out data
+        open(unit=16, file="OUTPUT", status="old", position="append")
+        write(16, *) "NEGF calculation DONE"
+        write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ) / (N_x * N_y * N_z)
+        write(16, *) "Writing DENSITY..."
 
-    open(unit=18, file="DENSITY")
-    write(18, '(3I5)') N_x, N_y, N_z
-    write(18, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
-    close(18)
+        open(unit=18, file="DENSITY")
+        write(18, '(3I5)') N_x, N_y, N_z
+        write(18, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
+        close(18)
 
-    call cpu_time(total_time%end)
-    total_time%sum = total_time%sum + total_time%end - total_time%start
-    write(16,*) "CPU time (Total): ", total_time%sum, "s"
-    write(16,*) "  CPU time (Real_space to Plane_wave): ", RtoP_time%sum, "s"
-    write(16,*) "  CPU time (Inverse Matrix): ", inverse_time%sum, "s"
-    write(16,*) "  CPU time (Plane_wave to Real_space): ", PtoR_time%sum, "s"
-    write(16,*) "  CPU time (Others): ", total_time%sum - RtoP_time%sum - inverse_time%sum - PtoR_time%sum, "s"
-    write(16,*) "********************"
-    write(16,*) "*                  *"
-    write(16,*) "*      DONE        *"
-    write(16,*) "*                  *"
-    write(16,*) "********************"
-    close(16)
+        call cpu_time(total_time%end)
+        total_time%sum = total_time%sum + total_time%end - total_time%start
+        write(16,*) "CPU time (Total): ", total_time%sum, "s"
+        write(16,*) "  CPU time (Real_space to Plane_wave): ", RtoP_time%sum, "s"
+        write(16,*) "  CPU time (Inverse Matrix): ", inverse_time%sum, "s"
+        write(16,*) "  CPU time (Plane_wave to Real_space): ", PtoR_time%sum, "s"
+        write(16,*) "  CPU time (Others): ", total_time%sum - RtoP_time%sum - inverse_time%sum - PtoR_time%sum, "s"
+        write(16,*) "********************"
+        write(16,*) "*                  *"
+        write(16,*) "*      DONE        *"
+        write(16,*) "*                  *"
+        write(16,*) "********************"
+        close(16)
+    end if
+
+    call MPI_FINALIZE(STATUS) !%%
 end program main

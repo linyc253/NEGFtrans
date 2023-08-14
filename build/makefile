@@ -1,5 +1,6 @@
 FFLAGS=-O3
 FC=gfortran
+MPIFC=mpifort
 SOURCEDIR=../src
 TARGET=NEGFtrans
 INCLUDE= -I/usr/local/include
@@ -11,7 +12,7 @@ OBJS=grid.o math_kernel.o negf.o
 all: $(TARGET).x
 
 $(TARGET).x: $(SOURCEDIR)/main.f90 $(OBJS)
-	$(FC) $(FFLAGS) $(INCLUDE) $(SOURCEDIR)/main.f90 -o $(TARGET).x $(OBJS) $(LIBS)
+	$(MPIFC) $(FFLAGS) $(INCLUDE) $(SOURCEDIR)/main.f90 -o $(TARGET).x $(OBJS) $(LIBS)
 
 
 %.o:$(SOURCEDIR)/%.f90
