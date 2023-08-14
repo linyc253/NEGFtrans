@@ -69,16 +69,28 @@ program main
     N_line_per_eV = 500 ! (points/eV)
 
     !===Read Files===
+    ! Read INPUT
     write(16, *) "Read in INPUT..."
     open(unit=15, file="INPUT")
     read(15, INPUT)
     close(15)
+
+    ! Modify NGX, NGY
+    if(NGX <= ceiling((LY / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2)) then
+        NGX = ceiling((LX / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2) + 1
+    end if
+    if(NGY <= ceiling((LY / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2)) then
+        NGY = ceiling((LY / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2) + 1
+    end if
+
+    ! Check LX, LY, LZ
     if((LX == 0.D0) .or. (LY == 0.D0) .or. (LZ == 0.D0)) then
         write(16, *) "ERROR: LX, LY, LZ must be specified in INPUT"
         call exit(STATUS)
     end if
     write(16, *) "-success-"
 
+    ! Read POTENTIAL
     write(16, *) "----------"
     write(16, *) "Read in POTENTIAL..."
     open(unit=17, file="POTENTIAL")
@@ -86,6 +98,8 @@ program main
     allocate(V_real(N_x, N_y, N_z))
     read(17, *) (((V_real(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
     close(17)
+
+    ! Check N_x, N_y
     if((mod(N_x, 2) == 1) .or. (mod(N_y, 2) == 1)) then
         write(16, *) "ERROR: The number of grid point in x & y direction must be even number"
         call exit(STATUS)
@@ -94,8 +108,8 @@ program main
     write(16, *) "The size of POTENTIAL is:"
     write(16, '(5X, 3I5)') N_x, N_y, N_z
 
-    if(NGX == 0) NGX = (N_x / 3) * 2
-    if(NGY == 0) NGY = (N_y / 3) * 2
+    ! if(NGX == 0) NGX = (N_x / 3) * 2
+    ! if(NGY == 0) NGY = (N_y / 3) * 2
     !XXXXXXXXXXXXXXXXXXXXXX UNDONE: Check NGX, NGY
 
     write(16, *) "The parameters are:"
@@ -128,7 +142,7 @@ program main
     write(16, *) "Layout the grid..."
 
     allocate(Density(N_x, N_y, N_z))
-    allocate(V_reciprocal(-NGX/2: NGX/2, -NGY/2: NGY/2), V_reciprocal_all(-NGX/2: NGX/2, -NGY/2: NGY/2, 1: N_z))
+    allocate(V_reciprocal(-NGX: NGX, -NGY: NGY), V_reciprocal_all(-NGX: NGX, -NGY: NGY, 1: N_z))
 
     N = PlaneWaveBasis_construction_findsize(atomic%ENCUT, atomic%LX, atomic%LY)
     allocate(nx_grid(N), ny_grid(N))
@@ -166,7 +180,7 @@ program main
         inverse_time, PtoR_time)
 
         open(unit=16, file="OUTPUT", status="old", position="append")
-        write(16, '(A2, I4, A1, I4)') "=>", i_job, " /", N_circle + N_line
+        write(16, '(A2, I4, A2, I4)') "=>", i_job, " /", N_circle + N_line
         close(16)
     end do
     !===========================================END==============================================
