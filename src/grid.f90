@@ -1,11 +1,12 @@
 module grid
     use, intrinsic :: iso_c_binding
+    use negf ! for the derived type
     implicit none
     include 'fftw3.f03'
     private
     public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
     Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, Hamiltonian_construction, &
-    print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction
+    print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction, Kpoint_mesh_construction
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
         ! Transform a local potential in real space into the matrix element in plane wave basis
@@ -387,6 +388,25 @@ contains
         end do
 
     end subroutine PlaneWaveBasis_construction
+
+    subroutine Kpoint_mesh_construction(NKX, NKY, Lx, Ly, kpoint)
+        integer, intent(in) :: NKX, NKY
+        real*8, intent(in) :: Lx, Ly
+        type(t_kpointmesh), intent(out) :: kpoint(:)
+        integer :: i, j, index
+
+        include 'constant.f90'
+        
+        do j=1, NKY
+            do i=1, NKX
+                index = (j - 1) * NKX + i
+                kpoint(index)%kx = (i - (1 + NKX) / 2.D0) / NKX * (2 * pi / Lx)
+                kpoint(index)%ky = (j - (1 + NKY) / 2.D0) / NKY * (2 * pi / Ly)
+                kpoint(index)%weight = 1.D0 / (NKX * NKY)
+            end do
+        end do
+
+    end subroutine kpoint_mesh_construction
 
     subroutine print_c_matrix(Matrix)
         complex*16, intent(in) :: Matrix(:, :)

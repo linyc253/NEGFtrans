@@ -20,13 +20,15 @@ program main
 
     implicit none
     real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
-    integer :: NGX, NGY, N_circle, N_line_per_eV
-    namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, N_circle, N_line_per_eV, GAP
+    integer :: NGX, NGY, N_circle, N_line_per_eV, NKX, NKY
+    namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, &
+     N_circle, N_line_per_eV, GAP, NKX, NKY
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
-    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job, rank = 0, mpi_size = 1
+    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time
+    type(t_kpointmesh), allocatable :: kpoint(:)
     real*8 :: rescale_factor
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
     complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :)
@@ -72,6 +74,8 @@ program main
     
     NGX = 0
     NGY = 0
+    NKX = 0
+    NKY = 0
     N_circle = 40 ! (points/pi)
     N_line_per_eV = 500 ! (points/eV)
 
@@ -96,7 +100,13 @@ program main
             write(16, *) "ERROR: LX, LY, LZ must be specified in INPUT"
             call exit(STATUS)
         end if
+        if((NKX == 0) .or. (NKY == 0)) then
+            write(16, *) "ERROR: NKX, NKY must be specified in INPUT"
+            call exit(STATUS)
+        end if
         write(16, *) "-success-"
+        write(16, *) "The parameters are:"
+        write(16, INPUT)
     end if
 
     ! Read POTENTIAL
@@ -115,11 +125,8 @@ program main
             call exit(STATUS)
         end if
         write(16, *) "-success-"
-        write(16, *) "The size of POTENTIAL is:"
-        write(16, '(5X, 3I5)') N_x, N_y, N_z
-
-        write(16, *) "The parameters are:"
-        write(16, INPUT)
+        write(16, *) "The size of POTENTIAL is:", N_x, N_y, N_z
+        write(16, *) "----------"
     end if
 
     !===Convert unit===
@@ -142,14 +149,17 @@ program main
         end do
     end do
 
-
-
-    !===Grid layout===
+    !===K-point layout===
+    allocate(kpoint(NKX * NKY))
+    call Kpoint_mesh_construction(NKX, NKY, atomic%LX, atomic%LY, kpoint)
     if(rank == 0) then
-        write(16, *) "----------"
-        write(16, *) "Layout the grid..."
+        write(16, *) "Number of K-point grid is:", size(kpoint)
+        write(16, *) "   kx          ky           weight"
+        write(16, '(3G12.3)') (kpoint(i)%kx, kpoint(i)%ky, kpoint(i)%weight, i=1, size(kpoint))
+        write(16, *)
     end if
 
+    !===Grid layout===
     allocate(Density(N_x, N_y, N_z))
     allocate(V_reciprocal(-NGX: NGX, -NGY: NGY), V_reciprocal_all(-NGX: NGX, -NGY: NGY, 1: N_z))
 
@@ -158,11 +168,11 @@ program main
     call PlaneWaveBasis_construction(atomic%ENCUT, atomic%LX, atomic%LY, nx_grid, ny_grid)
 
     if(rank == 0) then
+        write(16, *) "Layout the Grid..."
         write(16, *) "Grid size in x, y direction is: N =", N
         write(16, *) "Grid size in z direction is: N_z =", N_z
         write(16, *) "The 'Inverse Matrix' time is proportional to (N^3 N_z)"
         write(16, *) "----------"
-        write(16, *) "NEGF calculation start..."
         close(16)
     end if
 
@@ -183,14 +193,16 @@ program main
     RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
 
     ! STEP 2. Use NEGF to find 'Density', parallelized
+    if(rank == 0) write(16, *) "Density calculation start..."
     Density(:, :, :) = 0.D0
     N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
 
+    N_job = (N_circle + N_line) * size(kpoint)
     i_job = 1 + rank
-    do while(i_job <= N_circle + N_line)
+    do while(i_job <= N_job)
         ! Density = Density + Density_contribution_of_that_energy_point
-        call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, Density,&
-        inverse_time, PtoR_time)
+        call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, &
+        kpoint, Density, inverse_time, PtoR_time)
 
         i_job = i_job + mpi_size
         

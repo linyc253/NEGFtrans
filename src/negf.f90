@@ -8,24 +8,33 @@ module negf
     type :: t_timer
         real :: start, end, sum = 0.0
     end type
+    type :: t_kpointmesh
+        real*8 :: kx, ky, weight
+    end type
     private
-    public Equilibrium_Density, t_parameters, t_timer
+    public Equilibrium_Density, t_parameters, t_timer, t_kpointmesh
 contains
-    subroutine Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, min_V, atomic, Density,&
-         inverse_time, PtoR_time)
+    subroutine Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, min_V, atomic,&
+        kpoint, Density, inverse_time, PtoR_time)
         real*8, intent(in) :: min_V
         complex*16, intent(in), allocatable :: V_reciprocal_all(:, :, :)
         integer, intent(in) :: i_job, N_circle, N_line, nx_grid(:), ny_grid(:)
         type(t_parameters), intent(in) :: atomic
         type(t_timer), intent(inout) :: inverse_time, PtoR_time
+        type(t_kpointmesh) :: kpoint(:)
         real*8, intent(inout) :: Density(:, :, :)
 
-        integer :: N_x, N_y, N_z, N, i, j, k, ii
+        integer :: N_x, N_y, N_z, N, i, j, k, ii, i_integral, i_kpoint, Nk
         complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)&
         , G_Function(:, :, :, :), GreenDiag(:, :, :)
         real*8 :: circle_L, circle_R, line_L, line_R, E_c, E_R, theta, kx, ky
         complex*16 :: energy
         include 'constant.f90'
+
+        ! Distribute i_job
+        Nk = size(kpoint)
+        i_integral = 1 + mod(i_job - 1, Nk)
+        i_kpoint = 1 + (i_job - 1) / Nk ! fractional part (remainder) is discarded
 
         ! Allocate arrays
         N_x = size(Density, 1)
@@ -54,17 +63,17 @@ contains
         end if
 
         ! Construct Hamiltonian
-        kx = 0.D0 !XXXXXXXXXXXXXXXXXXXXXX  Temporary
-        ky = 0.D0 !XXXXXXXXXXXXXXXXXXXXXX  Temporary
+        kx = kpoint(i_kpoint)%kx
+        ky = kpoint(i_kpoint)%ky
         call Hamiltonian_construction(nx_grid, ny_grid, atomic%LX, atomic%LY, kx, ky, V_reciprocal_all, Hamiltonian)
 
-        if(i_job <= N_circle) then
+        if(i_integral <= N_circle) then
             ! CASE1
-            theta = value_simpson(i_job, N_circle, 0.D0, pi)
+            theta = value_simpson(i_integral, N_circle, 0.D0, pi)
             energy = E_c + E_R * exp(complex(0.D0, theta))
         else
             ! CASE2
-            energy = value_simpson(i_job - N_circle, N_line, line_L, line_R)
+            energy = value_simpson(i_integral - N_circle, N_line, line_L, line_R)
         end if
 
         ! Main (EI - Hamiltonian)
@@ -97,13 +106,14 @@ contains
         PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
 
         
-        if(i_job <= N_circle) then
+        if(i_integral <= N_circle) then
             ! CASE1
             do k=1, N_z
                 do j=1, N_y
                     do i=1, N_x
                         Density(i, j, k) = Density(i, j, k) + &
-                         2.D0 / pi * coefficient_simpson(i_job, N_circle, 0.D0, pi) * &
+                         kpoint(i_kpoint)%weight * &
+                         2.D0 / pi * coefficient_simpson(i_integral, N_circle, 0.D0, pi) * &
                          aimag(complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * GreenDiag(i, j, k))
                     end do
                 end do
@@ -114,7 +124,8 @@ contains
                 do j=1, N_y
                     do i=1, N_x
                         Density(i, j, k) = Density(i, j, k) - &
-                         2.D0 / pi * coefficient_simpson(i_job - N_circle, N_line, line_L, line_R) * &
+                         kpoint(i_kpoint)%weight * &
+                         2.D0 / pi * coefficient_simpson(i_integral - N_circle, N_line, line_L, line_R) * &
                          aimag(fermi_func(dble(energy), atomic%MU, atomic%TEMPERATURE) * GreenDiag(i, j, k))
                     end do
                 end do

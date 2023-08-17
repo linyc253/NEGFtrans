@@ -15,22 +15,29 @@ POTENTIAL = np.loadtxt(filename, skiprows=1)
 POTENTIAL = np.reshape(POTENTIAL, np.size(POTENTIAL))
 POTENTIAL = np.reshape(POTENTIAL, [N_x, N_y, N_z], order='F')
 
+filename = "../test_4/DENSITY"
+DENSITY_1 = np.loadtxt(filename, skiprows=1)
+DENSITY_1 = np.reshape(DENSITY_1, np.size(DENSITY_1))
+DENSITY_1 = np.reshape(DENSITY_1, [N_x, N_y, N_z], order='F')
+
 filename = "DENSITY"
-N_x, N_y, N_z = np.loadtxt(filename, skiprows=0, max_rows=1, dtype=int)
-DENSITY = np.loadtxt(filename, skiprows=1)
-DENSITY = np.reshape(DENSITY, np.size(DENSITY))
-DENSITY = np.reshape(DENSITY, [N_x, N_y, N_z], order='F')
+DENSITY_2 = np.loadtxt(filename, skiprows=1)
+DENSITY_2 = np.reshape(DENSITY_2, np.size(DENSITY_2))
+DENSITY_2 = np.reshape(DENSITY_2, [N_x, N_y, N_z], order='F')
+
+DENSITY = DENSITY_2 - DENSITY_1
 
 # Theoretical calculation
 Y_dense = np.linspace(0, Ly, 1000)
 omega = 0.47316
 y_0 = omega ** (-1/2)
-THEORY = np.exp(- ((Y_dense - Ly / 2) / 0.529177210903 / y_0) ** 2 / 2) / (np.pi ** (3/4)) / (y_0 ** (3/2))
+THEORY = 2 * ((Y_dense - Ly / 2) / 0.529177210903 / y_0) * \
+    np.exp(- ((Y_dense - Ly / 2) / 0.529177210903 / y_0) ** 2 / 2) / (np.pi ** (3/4)) / (y_0 ** (3/2)) / 2 ** (1/2)
 THEORY = 2 * (THEORY ** 2)
 THEORY /= 0.529177210903 ** 3
 
 Y = np.arange(1, N_y + 1) * Ly / N_y
-print("Total Charge: ", np.sum(DENSITY))
+print("Total Charge: ", np.sum(DENSITY) * (Lx * Ly * Lz) / (N_x * N_y * N_z))
 
 fig, ax1 = plt.subplots()
 
