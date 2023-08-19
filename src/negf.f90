@@ -1,18 +1,19 @@
 module negf
     use math_kernel
     use grid
-    implicit none
-    type :: t_parameters
-        real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
-    end type
-    type :: t_timer
-        real :: start, end, sum = 0.0
-    end type
-    type :: t_kpointmesh
-        real*8 :: kx, ky, weight
-    end type
+    use global
+    ! implicit none
+    ! type :: t_parameters
+    !     real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
+    ! end type
+    ! type :: t_timer
+    !     real :: start, end, sum = 0.0
+    ! end type
+    ! type :: t_kpointmesh
+    !     real*8 :: kx, ky, weight
+    ! end type
     private
-    public Equilibrium_Density, t_parameters, t_timer, t_kpointmesh
+    public Equilibrium_Density!, t_parameters, t_timer, t_kpointmesh
 contains
     subroutine Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, min_V, atomic,&
         kpoint, Density, inverse_time, PtoR_time)
@@ -24,17 +25,16 @@ contains
         type(t_kpointmesh) :: kpoint(:)
         real*8, intent(inout) :: Density(:, :, :)
 
-        integer :: N_x, N_y, N_z, N, i, j, k, ii, i_integral, i_kpoint, Nk
+        integer :: N_x, N_y, N_z, N, i, j, k, ii, i_integral, i_kpoint, N_integral
         complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)&
         , G_Function(:, :, :, :), GreenDiag(:, :, :)
         real*8 :: circle_L, circle_R, line_L, line_R, E_c, E_R, theta, kx, ky
         complex*16 :: energy
-        include 'constant.f90'
 
         ! Distribute i_job
-        Nk = size(kpoint)
-        i_integral = 1 + mod(i_job - 1, Nk)
-        i_kpoint = 1 + (i_job - 1) / Nk ! fractional part (remainder) is discarded
+        N_integral = N_circle + N_line
+        i_integral = 1 + mod(i_job - 1, N_integral)
+        i_kpoint = 1 + (i_job - 1) / N_integral ! fractional part (remainder) is discarded
 
         ! Allocate arrays
         N_x = size(Density, 1)

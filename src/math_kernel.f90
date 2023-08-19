@@ -1,4 +1,5 @@
 module math_kernel
+    use global
     implicit none
     private
     public GreensFunction_tri_solver, coefficient_simpson, value_simpson, fermi_func
@@ -195,8 +196,7 @@ contains
             implicit none
             real*8, intent(in) :: energy, mu, temperature
             real*8 :: f_E
-            include 'constant.f90'
-            f_E = 1D0 / (exp((energy - mu) / (k_B * temperature)) + 1)
+            f_E = 1.D0 / (exp((energy - mu) / (k_B * temperature)) + 1)
         end function fermi_func
 
         

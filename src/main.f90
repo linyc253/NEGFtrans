@@ -17,6 +17,7 @@ program main
     use grid
     use negf
     use mpi !%%
+    use global
 
     implicit none
     real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
@@ -33,8 +34,6 @@ program main
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
     complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :)
     integer, allocatable :: nx_grid(:), ny_grid(:)
-
-    include 'constant.f90'
 
     call MPI_INIT(STATUS) !%%
     call MPI_COMM_RANK(MPI_COMM_WORLD, rank, STATUS) !%%
@@ -156,7 +155,7 @@ program main
         write(16, *) "Number of K-point grid is:", size(kpoint)
         write(16, *) "   kx          ky           weight"
         write(16, '(3G12.3)') (kpoint(i)%kx, kpoint(i)%ky, kpoint(i)%weight, i=1, size(kpoint))
-        write(16, *)
+        write(16, *) "----------"
     end if
 
     !===Grid layout===
@@ -172,6 +171,8 @@ program main
         write(16, *) "Grid size in x, y direction is: N =", N
         write(16, *) "Grid size in z direction is: N_z =", N_z
         write(16, *) "The 'Inverse Matrix' time is proportional to (N^3 N_z)"
+        write(16, *) "----------"
+        write(16, *) "Transform Potential to plane wave basis..."
         write(16, *) "----------"
         close(16)
     end if
@@ -193,7 +194,11 @@ program main
     RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
 
     ! STEP 2. Use NEGF to find 'Density', parallelized
-    if(rank == 0) write(16, *) "Density calculation start..."
+    if(rank == 0) then
+        open(unit=16, file="OUTPUT", status="old", position="append")
+        write(16, *) "Density calculation start..."
+        close(16)
+    end if
     Density(:, :, :) = 0.D0
     N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
 
@@ -208,7 +213,7 @@ program main
         
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
-            write(16, '(A2, I4, A2, I4)') "=>", min(i_job - 1, N_circle + N_line), " /", N_circle + N_line
+            write(16, '(A2, I4, A2, I4)') "=>", min(i_job - 1, N_job), " /", N_job
             close(16)
         end if
     end do
@@ -236,6 +241,7 @@ program main
         !　Write out data
         open(unit=16, file="OUTPUT", status="old", position="append")
         write(16, *) "NEGF calculation DONE"
+        write(16, *) "----------"
         write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ) / (N_x * N_y * N_z)
         write(16, *) "Writing DENSITY..."
 

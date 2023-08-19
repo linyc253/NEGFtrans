@@ -1,6 +1,6 @@
 module grid
     use, intrinsic :: iso_c_binding
-    use negf ! for the derived type
+    use global
     implicit none
     include 'fftw3.f03'
     private
@@ -78,8 +78,6 @@ contains
         complex*16, allocatable :: work(:, :), work_out(:, :)
         type(C_PTR) :: plan, iplan
 
-        include 'constant.f90'
-
         N = size(nx_grid)
         N_x = size(subGreenDiag, 1)
         N_y = size(subGreenDiag, 2)
@@ -147,8 +145,6 @@ contains
         complex*16, allocatable :: V_work(:, :, :, :)
         complex*16, allocatable :: work(:, :), work_out(:, :)
         type(C_PTR) :: plan, iplan
-
-        include 'constant.f90'
 
         N_x = size(V_real, 1)
         N_y = size(V_real, 2)
@@ -245,8 +241,6 @@ contains
 
         integer :: i, j, k, N, N_z
 
-        include 'constant.f90'
-
         N = size(nx_grid)
         N_z = size(Hamiltonian, 3)
 
@@ -280,8 +274,6 @@ contains
         integer :: i, j, k, N, N_z
         real*8 :: delta
         complex*16, allocatable :: QR(:), QT(:)
-
-        include 'constant.f90'
 
         N = size(Hamiltonian, 1)
         N_z = size(Hamiltonian, 3)
@@ -348,8 +340,6 @@ contains
 
         integer :: i, j, nx_max, ny_max
 
-        include 'constant.f90'
-
         N = 0
         nx_max = ceiling(Lx / pi * sqrt(ENCUT / 2))
         ny_max = ceiling(Ly / pi * sqrt(ENCUT / 2))
@@ -370,8 +360,6 @@ contains
         integer, intent(out) :: nx_grid(:), ny_grid(:)
 
         integer :: i, j, nx_max, ny_max, nn
-
-        include 'constant.f90'
 
         nn = 1
         nx_max = ceiling(Lx / pi * sqrt(ENCUT / 2))
@@ -394,8 +382,6 @@ contains
         real*8, intent(in) :: Lx, Ly
         type(t_kpointmesh), intent(out) :: kpoint(:)
         integer :: i, j, index
-
-        include 'constant.f90'
         
         do j=1, NKY
             do i=1, NKX
