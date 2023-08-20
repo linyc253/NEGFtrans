@@ -4,3 +4,4 @@ test_negf/
 build/*
 !build/makefile
 docs/
+upload.sh

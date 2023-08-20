@@ -2,18 +2,8 @@ module negf
     use math_kernel
     use grid
     use global
-    ! implicit none
-    ! type :: t_parameters
-    !     real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
-    ! end type
-    ! type :: t_timer
-    !     real :: start, end, sum = 0.0
-    ! end type
-    ! type :: t_kpointmesh
-    !     real*8 :: kx, ky, weight
-    ! end type
     private
-    public Equilibrium_Density!, t_parameters, t_timer, t_kpointmesh
+    public Equilibrium_Density
 contains
     subroutine Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, min_V, atomic,&
         kpoint, Density, inverse_time, PtoR_time)

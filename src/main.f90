@@ -213,7 +213,7 @@ program main
         
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
-            write(16, '(A2, I4, A2, I4)') "=>", min(i_job - 1, N_job), " /", N_job
+            write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
             close(16)
         end if
     end do

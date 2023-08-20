@@ -60,6 +60,36 @@ There are four important files in `src/` directory
 
     This is the THIRD layer of the code. Containing most of the subroutine that dealing with math formula (e.g. matrix inverse). These subroutines may be use as a tool in other code as well. The logic of the naming is similar to `grid.f90`.
 
-
-
 # Compile
+Here are some information about environment setting. To successfully compile the program. The system might need to have the following compiler/library installed.
+
+1. gfortran: 
+
+    GNU compiler is suggested for my code. For those who want to use PGI or Intel compiler, some modification is required, so I strongly suggest you to use GNU Fortran to compile it.
+
+
+1. OpenMPI:
+
+    Note that the openmpi should be installed with the default compiler being GNU Fortran mentioned above. One might check this by the following:
+    ```
+    $ gfortran --version
+    GNU Fortran (GCC) 10.4.0
+    Copyright (C) 2020 Free Software Foundation, Inc.
+    This is free software; see the source for copying conditions.  There is NO
+    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    $ mpifort --version
+    GNU Fortran (GCC) 10.4.0
+    Copyright (C) 2020 Free Software Foundation, Inc.
+    This is free software; see the source for copying conditions.  There is NO
+    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    ```
+    That is, `gfortran --version` and `mpifort --version` should give the same result (this is because mpifort is just a wrapper of gfortran)
+
+1. LAPACK & BLAS & FFTW3
+
+    These libraries should be installed in either `/usr/local/lib` or `/usr/lib`. Also, FFTW3 library requires an include file `fftw3.f03`. Make sure that this file exists in the path specified in `makefile`:
+    ```
+    # For the file 'fftw3.f03'
+    INCLUDE= -I/usr/local/include 
+    ```
+    If not, you should modify this line in `makefile` to the correct path before compile the code.

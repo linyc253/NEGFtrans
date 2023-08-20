@@ -3,7 +3,10 @@ FC=gfortran
 MPIFC=mpifort
 SOURCEDIR=../src
 TARGET=NEGFtrans
+
+# For the file 'fftw3.f03'
 INCLUDE= -I/usr/local/include
+
 LIBS=-lfftw3 -llapack -lblas
 
 OBJS=grid.o math_kernel.o negf.o global.o
@@ -22,5 +25,6 @@ clean:
 	rm *.o *.mod $(TARGET).x
 
 #=========== Deal with dependency here============#
-negf.o:grid.o math_kernel.o
+negf.o:grid.o math_kernel.o global.o
 grid.o:global.o
+math_kernel.o:global.o
