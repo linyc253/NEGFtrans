@@ -30,7 +30,7 @@ THEORY = 2 * (THEORY ** 2)
 THEORY /= 0.529177210903 ** 3
 
 Y = np.arange(1, N_y + 1) * Ly / N_y
-print("Total Charge: ", np.sum(DENSITY))
+print("Total Charge: ", np.sum(DENSITY) * (Lx * Ly * Lz) / (N_x * N_y * N_z))
 
 fig, ax1 = plt.subplots()
 
@@ -48,4 +48,4 @@ ax2.set_ylabel('Potential (eV)', c='tab:blue')
 ax2.tick_params(axis='y', labelcolor='tab:blue')
 fig.legend()
 plt.savefig("multi_slice")
-plt.show()
+#plt.show()

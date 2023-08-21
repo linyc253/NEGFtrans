@@ -6,18 +6,18 @@ module negf
     public Equilibrium_Density
 contains
     subroutine Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, min_V, atomic,&
-        kpoint, Density, inverse_time, PtoR_time)
+        kpoint, Density_Matrix, inverse_time)
         real*8, intent(in) :: min_V
         complex*16, intent(in), allocatable :: V_reciprocal_all(:, :, :)
         integer, intent(in) :: i_job, N_circle, N_line, nx_grid(:), ny_grid(:)
         type(t_parameters), intent(in) :: atomic
-        type(t_timer), intent(inout) :: inverse_time, PtoR_time
+        type(t_timer), intent(inout) :: inverse_time
         type(t_kpointmesh) :: kpoint(:)
-        real*8, intent(inout) :: Density(:, :, :)
+        complex*16, intent(inout) :: Density_Matrix(:, :, :)
 
         integer :: N_x, N_y, N_z, N, i, j, k, ii, i_integral, i_kpoint, N_integral
         complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)&
-        , G_Function(:, :, :, :), GreenDiag(:, :, :)
+        , G_Function(:, :, :, :)
         real*8 :: circle_L, circle_R, line_L, line_R, E_c, E_R, theta, kx, ky
         complex*16 :: energy
 
@@ -27,12 +27,12 @@ contains
         i_kpoint = 1 + (i_job - 1) / N_integral ! fractional part (remainder) is discarded
 
         ! Allocate arrays
-        N_x = size(Density, 1)
-        N_y = size(Density, 2)
-        N_z = size(Density, 3)
+        N_x = size(Density_Matrix, 1)
+        N_y = size(Density_Matrix, 2)
+        N_z = size(Density_Matrix, 3)
         N = size(nx_grid)
         allocate(Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))
-        allocate(G_function(N, N, N_z, 3), GreenDiag(N_x, N_y, N_z))
+        allocate(G_function(N, N, N_z, 3))
         
         ! Determine integral parameters
         circle_L = min_V - 1.D0 / hartree
@@ -86,37 +86,28 @@ contains
                 end do
             end do
         end do
-
-        ! Transform G_Function from plane wave basis to real space
-        call cpu_time(PtoR_time%start)
-        do k=1, N_z
-            call Greensfunction_PlanewaveToReal(G_Function(:, :, k, 1), nx_grid, ny_grid, GreenDiag(:, :, k))
-        end do
-        call cpu_time(PtoR_time%end)
-        PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
-
         
         if(i_integral <= N_circle) then
             ! CASE1
             do k=1, N_z
-                do j=1, N_y
-                    do i=1, N_x
-                        Density(i, j, k) = Density(i, j, k) + &
+                do j=1, N
+                    do i=1, N
+                        Density_Matrix(i, j, k) = Density_Matrix(i, j, k) + &
                          kpoint(i_kpoint)%weight * &
                          2.D0 / pi * coefficient_simpson(i_integral, N_circle, 0.D0, pi) * &
-                         aimag(complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * GreenDiag(i, j, k))
+                         complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * G_Function(i, j, k, 1)
                     end do
                 end do
             end do
         else
             ! CASE2
             do k=1, N_z
-                do j=1, N_y
-                    do i=1, N_x
-                        Density(i, j, k) = Density(i, j, k) - &
+                do j=1, N
+                    do i=1, N
+                        Density_Matrix(i, j, k) = Density_Matrix(i, j, k) - &
                          kpoint(i_kpoint)%weight * &
                          2.D0 / pi * coefficient_simpson(i_integral - N_circle, N_line, line_L, line_R) * &
-                         aimag(fermi_func(dble(energy), atomic%MU, atomic%TEMPERATURE) * GreenDiag(i, j, k))
+                         fermi_func(dble(energy), atomic%MU, atomic%TEMPERATURE) * G_Function(i, j, k, 1)
                     end do
                 end do
             end do
@@ -124,4 +115,8 @@ contains
         end if
 
     end subroutine Equilibrium_Density
+    
+    subroutine Nonequilibrium_Density()
+        
+    end subroutine
 end module negf

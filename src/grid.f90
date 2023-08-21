@@ -6,7 +6,8 @@ module grid
     private
     public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
     Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, Hamiltonian_construction, &
-    print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction, Kpoint_mesh_construction
+    print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction, &
+    Kpoint_mesh_construction
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
         ! Transform a local potential in real space into the matrix element in plane wave basis

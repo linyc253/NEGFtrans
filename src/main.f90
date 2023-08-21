@@ -20,19 +20,20 @@ program main
     use global
 
     implicit none
-    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP
+    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS
     integer :: NGX, NGY, N_circle, N_line_per_eV, NKX, NKY
     namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, &
-     N_circle, N_line_per_eV, GAP, NKX, NKY
+     N_circle, N_line_per_eV, GAP, NKX, NKY, VDS
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
-    integer :: N_x, N_y, N_z, N, i, j, k, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1
+    integer :: N_x, N_y, N_z, N, i, j, k, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time
     type(t_kpointmesh), allocatable :: kpoint(:)
     real*8 :: rescale_factor
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
-    complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :)
+    complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :), Density_Matrix(:, :, :), &
+     sendbuf(:, :, :), recvbuf(:, :, :)
     integer, allocatable :: nx_grid(:), ny_grid(:)
 
     call MPI_INIT(STATUS) !%%
@@ -70,6 +71,7 @@ program main
     LZ = 0.D0 ! Angstrom
     ENCUT = 100.D0 ! eV
     GAP = 6.D0 ! k_B * TEMPERATURE
+    VDS = 0.D0 ! eV
     
     NGX = 0
     NGY = 0
@@ -140,6 +142,7 @@ program main
     atomic%LZ = LZ / a_0 ! Angstrom -> bohr
     atomic%ENCUT = ENCUT / hartree ! eV -> hartree
     atomic%GAP = GAP * k_B * atomic%TEMPERATURE ! (k_B T) -> hartree
+    atomic%VDS = VDS / hartree ! eV -> hartree
     do k=1, N_z
         do j=1, N_y
             do i=1, N_x
@@ -163,7 +166,7 @@ program main
     allocate(V_reciprocal(-NGX: NGX, -NGY: NGY), V_reciprocal_all(-NGX: NGX, -NGY: NGY, 1: N_z))
 
     N = PlaneWaveBasis_construction_findsize(atomic%ENCUT, atomic%LX, atomic%LY)
-    allocate(nx_grid(N), ny_grid(N))
+    allocate(nx_grid(N), ny_grid(N), Density_Matrix(N, N, N_z))
     call PlaneWaveBasis_construction(atomic%ENCUT, atomic%LX, atomic%LY, nx_grid, ny_grid)
 
     if(rank == 0) then
@@ -180,7 +183,7 @@ program main
     !============================================================================================
     !==========================================START=============================================
 
-    ! STEP 1. Construct 'V_reciprocal_all'
+    ! ===STEP 1. Construct 'V_reciprocal_all'===
     call cpu_time(RtoP_time%start)
     do k=1, N_z
         call LocalPotential_RealToPlanewave(V_real(:, :, k), V_reciprocal)
@@ -193,21 +196,22 @@ program main
     call cpu_time(RtoP_time%end)
     RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
 
-    ! STEP 2. Use NEGF to find 'Density', parallelized
+    ! ===STEP 2. Use NEGF to find 'Density_Matrix', parallelized===
     if(rank == 0) then
         open(unit=16, file="OUTPUT", status="old", position="append")
         write(16, *) "Density calculation start..."
         close(16)
     end if
     Density(:, :, :) = 0.D0
+    Density_Matrix(:, :, :) = 0.D0
     N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
 
     N_job = (N_circle + N_line) * size(kpoint)
     i_job = 1 + rank
     do while(i_job <= N_job)
-        ! Density = Density + Density_contribution_of_that_energy_point
+        ! Density_Matrix = Density_Matrix + [Density_Matrix contribution of that energy point]
         call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, &
-        kpoint, Density, inverse_time, PtoR_time)
+        kpoint, Density_Matrix, inverse_time)
 
         i_job = i_job + mpi_size
         
@@ -220,13 +224,53 @@ program main
 
     ! Collect data from different rank
     if(rank == 0) then !%%
-        call MPI_Reduce(MPI_IN_PLACE, Density, size(Density), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+        call MPI_Reduce(MPI_IN_PLACE, Density_Matrix, size(Density_Matrix), &
+         MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
     else !%%
-        call MPI_Reduce(Density, Density, size(Density), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+        call MPI_Reduce(Density_Matrix, Density_Matrix, size(Density_Matrix), &
+        MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
     end if !%%
+
+    ! ===STEP 3. Transform G_Function from plane wave basis to real space, parallelized===
+    call cpu_time(PtoR_time%start)
+    subsize = ((size(Density_Matrix, 3) - 1) / mpi_size + 1)
+    allocate(sendbuf(N, N, subsize * mpi_size), recvbuf(N, N, subsize))
+    if(rank == 0) then
+        sendbuf(:, :, :) = 0.D0
+        do k=1, N_z
+            do j=1, N
+                do i=1, N
+                    sendbuf(i, j, k) = Density_Matrix(i, j, k)
+                end do
+            end do
+        end do
+    end if
+    call MPI_Scatter(sendbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, &
+                     recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
+    deallocate(sendbuf)
+    allocate(sendbuf(N_x, N_y, subsize))
+    do k=1, subsize
+        call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
+    end do
+    deallocate(recvbuf)
+    allocate(recvbuf(N_x, N_y, subsize * mpi_size))
+    call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
+                     recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
+    if(rank == 0) then
+        do k=1, N_z
+            do j=1, N_y
+                do i=1, N_x
+                    Density(i, j, k) = aimag(recvbuf(i, j, k))
+                end do
+            end do
+        end do
+    end if
+    call cpu_time(PtoR_time%end)
+    PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
 
     !===========================================END==============================================
     !============================================================================================
+    
     if(rank == 0) then
         ! Rescale density. (Unit: 1/Angstrom^3)
         rescale_factor = dble(N_z) / (LX * LY * LZ)
