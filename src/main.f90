@@ -20,16 +20,17 @@ program main
     use global
 
     implicit none
-    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS
+    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS, TRANSMISSION_GRID(3)
     integer :: NGX, NGY, N_circle, N_line_per_eV, NKX, NKY
     namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, &
-     N_circle, N_line_per_eV, GAP, NKX, NKY, VDS
+     N_circle, N_line_per_eV, GAP, NKX, NKY, VDS, TRANSMISSION_GRID
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
-    integer :: N_x, N_y, N_z, N, i, j, k, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1
+    integer :: N_x, N_y, N_z, N, i, j, k, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1, N_E
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time
     type(t_kpointmesh), allocatable :: kpoint(:)
+    type(t_transmission), allocatable :: Transmission(:)
     real*8 :: rescale_factor
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :)
     complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :), Density_Matrix(:, :, :), &
@@ -72,6 +73,7 @@ program main
     ENCUT = 100.D0 ! eV
     GAP = 6.D0 ! k_B * TEMPERATURE
     VDS = 0.D0 ! eV
+    TRANSMISSION_GRID(:) = 0.D0
     
     NGX = 0
     NGY = 0
@@ -143,6 +145,9 @@ program main
     atomic%ENCUT = ENCUT / hartree ! eV -> hartree
     atomic%GAP = GAP * k_B * atomic%TEMPERATURE ! (k_B T) -> hartree
     atomic%VDS = VDS / hartree ! eV -> hartree
+    atomic%TRANSMISSION_GRID(1) = TRANSMISSION_GRID(1) / hartree ! eV -> hartree
+    atomic%TRANSMISSION_GRID(2) = TRANSMISSION_GRID(2) / hartree ! eV -> hartree
+    N_E = nint(TRANSMISSION_GRID(3))
     do k=1, N_z
         do j=1, N_y
             do i=1, N_x
@@ -160,6 +165,13 @@ program main
         write(16, '(3G12.3)') (kpoint(i)%kx, kpoint(i)%ky, kpoint(i)%weight, i=1, size(kpoint))
         write(16, *) "----------"
     end if
+
+    !===Transmission-energy-grid layout===
+    allocate(Transmission(N_E))
+    do i=1, N_E
+        Transmission(i)%energy = atomic%TRANSMISSION_GRID(1) + &
+         (atomic%TRANSMISSION_GRID(2) - atomic%TRANSMISSION_GRID(1)) * (i - 1) / (N_E - 1)
+    end do
 
     !===Grid layout===
     allocate(Density(N_x, N_y, N_z))
@@ -202,7 +214,7 @@ program main
         write(16, *) "Density calculation start..."
         close(16)
     end if
-    Density(:, :, :) = 0.D0
+
     Density_Matrix(:, :, :) = 0.D0
     N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
 
@@ -222,7 +234,7 @@ program main
         end if
     end do
 
-    ! Collect data from different rank
+    ! Reduce from different rank
     if(rank == 0) then !%%
         call MPI_Reduce(MPI_IN_PLACE, Density_Matrix, size(Density_Matrix), &
          MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
@@ -232,6 +244,8 @@ program main
     end if !%%
 
     ! ===STEP 3. Transform G_Function from plane wave basis to real space, parallelized===
+
+    ! Scatter to different rank
     call cpu_time(PtoR_time%start)
     subsize = ((size(Density_Matrix, 3) - 1) / mpi_size + 1)
     allocate(sendbuf(N, N, subsize * mpi_size), recvbuf(N, N, subsize))
@@ -249,9 +263,13 @@ program main
                      recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
     deallocate(sendbuf)
     allocate(sendbuf(N_x, N_y, subsize))
+
+    ! Calculation
     do k=1, subsize
         call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
     end do
+
+    ! Gather from different rank
     deallocate(recvbuf)
     allocate(recvbuf(N_x, N_y, subsize * mpi_size))
     call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
@@ -268,6 +286,39 @@ program main
     call cpu_time(PtoR_time%end)
     PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
 
+    ! ===STEP 4. Use NEGF to find 'Transmission coefficient', parallelized===
+    if(rank == 0) then
+        open(unit=16, file="OUTPUT", status="old", position="append")
+        write(16, *) "Transmission calculation start..."
+        close(16)
+    end if
+
+    Transmission(:)%tau = 0.D0
+    N_job = N_E * size(kpoint)
+    i_job = 1 + rank
+    do while(i_job <= N_job)
+        print *, "POINT0"
+        call Transmission_Coefficient(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
+        kpoint, Transmission)
+
+        i_job = i_job + mpi_size
+
+        if(rank == 0) then
+            open(unit=16, file="OUTPUT", status="old", position="append")
+            write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
+            close(16)
+        end if
+    end do
+
+    ! Reduce from different rank
+    if(rank == 0) then !%%
+        call MPI_Reduce(MPI_IN_PLACE, Transmission%tau, size(Transmission%tau), &
+         MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+    else !%%
+        call MPI_Reduce(Transmission%tau, Transmission%tau, size(Transmission%tau), &
+         MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+    end if !%%
+
     !===========================================END==============================================
     !============================================================================================
     
@@ -282,6 +333,10 @@ program main
             end do
         end do
 
+        do i= 1, size(Transmission)
+            Transmission(i)%energy = Transmission(i)%energy * hartree ! unit: eV
+        end do
+
         !　Write out data
         open(unit=16, file="OUTPUT", status="old", position="append")
         write(16, *) "NEGF calculation DONE"
@@ -293,6 +348,11 @@ program main
         write(18, '(3I5)') N_x, N_y, N_z
         write(18, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
         close(18)
+
+        open(unit=19, file="TRANSMISSION")
+        write(19, *) "   Energy (eV)    Transmission_coefficient"
+        write(19, '(2G17.8)') (Transmission(i)%energy, Transmission(i)%tau, i=1, size(Transmission))
+        close(19)
 
         call cpu_time(total_time%end)
         total_time%sum = total_time%sum + total_time%end - total_time%start

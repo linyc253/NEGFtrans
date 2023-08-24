@@ -7,7 +7,7 @@ module grid
     public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
     Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, Hamiltonian_construction, &
     print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction, &
-    Kpoint_mesh_construction
+    Kpoint_mesh_construction, Transmission_solver
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
         ! Transform a local potential in real space into the matrix element in plane wave basis
@@ -331,6 +331,58 @@ contains
         end do
 
     end subroutine E_minus_H_construction
+
+    subroutine Transmission_solver(G_Function, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
+     kx, ky, V_L, V_R, tau)
+        complex*16, intent(in) :: G_Function(:, :, :, :)
+        integer, intent(in) :: nx_grid(:), ny_grid(:)
+        real*8, intent(in) :: energy, Lx, Ly, Lz, kx, ky, V_L, V_R
+        real*8, intent(out) :: tau
+
+        integer :: i, j, N, N_z
+        real*8 :: delta
+        complex*16 :: sum
+        real*8, allocatable :: QR(:), QT(:)
+        complex*16, allocatable :: Matrix_A(:, :), Matrix_B(:, :)
+
+        N = size(G_Function, 1)
+        N_z = size(G_Function, 3)
+        delta = Lz / N_z
+
+        allocate(QR(N), QT(N), Matrix_A(N, N), Matrix_B(N, N))
+
+        ! Get 'zero' for negative number inside sqrt()
+        do i=1, N
+            QR(i) = sqrt(max(2 * (energy - V_L) - (2 * nx_grid(i) * pi / Lx + kx) ** 2 &
+            - (2 * ny_grid(i) * pi / Ly + ky) ** 2, 0.D0))
+            QT(i) = sqrt(max(2 * (energy - V_R) - (2 * nx_grid(i) * pi / Lx + kx) ** 2 &
+            - (2 * ny_grid(i) * pi / Ly + ky) ** 2, 0.D0))
+        end do
+
+        ! Matrix_A = (\gamma_L)(g_{1, N_z})
+        do j=1, N
+            do i=1, N
+                Matrix_A(i, j) = sin(QR(i) * delta) / delta ** 2 * G_Function(i, j, N_z, 2)
+            end do
+        end do
+
+        ! Matrix_B = (\gamma_R)(g^{\dagger}_{1, N_z})
+        do j=1, N
+            do i=1, N
+                Matrix_B(i, j) = sin(QT(i) * delta) / delta ** 2 * conjg(G_Function(j, i, N_z, 2))
+            end do
+        end do
+
+        ! tau = trace(AB)
+        sum = 0.D0
+        do j=1, N
+            do i=1, N
+                sum = sum + Matrix_A(i, j) * Matrix_B(j, i)
+            end do
+        end do
+        tau = real(sum)
+
+    end subroutine Transmission_solver
 
     function PlaneWaveBasis_construction_findsize(ENCUT, Lx, Ly) result(N)
         ! Calculate the size (N) of the planewave grid by ENCUT

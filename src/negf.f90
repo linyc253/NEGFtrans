@@ -2,8 +2,9 @@ module negf
     use math_kernel
     use grid
     use global
+    implicit none
     private
-    public Equilibrium_Density
+    public Equilibrium_Density, Transmission_Coefficient
 contains
     subroutine Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, min_V, atomic,&
         kpoint, Density_Matrix, inverse_time)
@@ -36,7 +37,7 @@ contains
         
         ! Determine integral parameters
         circle_L = min_V - 1.D0 / hartree
-                                  !  ^ This improve precision significantly 
+                        !  ^ This improve precision significantly 
         circle_R = atomic%MU - atomic%GAP
         line_L = atomic%MU - atomic%GAP
         line_R = atomic%MU + atomic%GAP
@@ -66,7 +67,7 @@ contains
             energy = value_simpson(i_integral - N_circle, N_line, line_L, line_R)
         end if
 
-        ! Main (EI - Hamiltonian)
+        ! Construct (EI - Hamiltonian)
         call E_minus_H_construction(Hamiltonian, energy + complex(0.D0, atomic%ETA), nx_grid, ny_grid, atomic%LX, &
          atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, E_minus_H)
 
@@ -116,7 +117,65 @@ contains
 
     end subroutine Equilibrium_Density
     
-    subroutine Nonequilibrium_Density()
+    subroutine Transmission_Coefficient(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
+        kpoint, Transmission)
+        complex*16, intent(in), allocatable :: V_reciprocal_all(:, :, :)
+        integer, intent(in) :: i_job, nx_grid(:), ny_grid(:)
+        type(t_parameters), intent(in) :: atomic
+        type(t_kpointmesh) :: kpoint(:)
+        type(t_transmission), intent(inout) :: Transmission(:)
+
+        integer :: i, j, k, ii, N, N_z, N_E, i_energy, i_kpoint
+        complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)&
+        , G_Function(:, :, :, :)
+        real*8 :: kx, ky, tau
+        complex*16 :: energy
+
+        ! Distribute i_job
+        N_E = size(Transmission)
+        i_energy = 1 + mod(i_job - 1, N_E)
+        i_kpoint = 1 + (i_job - 1) / N_E ! fractional part (remainder) is discarded
+
+        ! Allocate arrays
+        N = size(nx_grid)
+        N_z = size(V_reciprocal_all, 3)
+        energy = Transmission(i_energy)%energy
+        allocate(Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))
+        allocate(G_function(N, N, N_z, 3))
+
+        ! Construct Hamiltonian
+        kx = kpoint(i_kpoint)%kx
+        ky = kpoint(i_kpoint)%ky
+        call Hamiltonian_construction(nx_grid, ny_grid, atomic%LX, atomic%LY, kx, ky, V_reciprocal_all, Hamiltonian)
+
+
+        ! Construct (EI - Hamiltonian)
+        call E_minus_H_construction(Hamiltonian, energy + complex(0.D0, atomic%ETA), nx_grid, ny_grid, atomic%LX, &
+         atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, E_minus_H)
+
+        ! Solve for G_Function = (EI - Hamiltonian)^{-1}
+            ! call cpu_time(inverse_time%start) ! XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+        call GreensFunction_tri_solver(E_minus_H, G_Function)
+            ! call cpu_time(inverse_time%end)
+            ! inverse_time%sum = inverse_time%sum + inverse_time%end - inverse_time%start
+
+        ! Rescale to compensate the extra factor in E_minus_H
+        do ii=1, 3
+            do k=1, N_z
+                do j=1, N
+                    do i=1, N
+                        G_Function(i, j, k, ii) = G_Function(i, j, k, ii) * 2.D0 * (atomic%LZ / N_z) ** 2
+                    end do
+                end do
+            end do
+        end do
+
+        ! Calculate Transmission
+        call Transmission_solver(G_Function, Transmission(i_energy)%energy, nx_grid, ny_grid, atomic%LX, &
+        atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, tau)
+
+        Transmission(i_energy)%tau = Transmission(i_energy)%tau + tau * kpoint(i_kpoint)%weight
         
-    end subroutine
+    end subroutine Transmission_Coefficient
+
 end module negf

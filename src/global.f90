@@ -3,13 +3,16 @@ module global
     
     ! Derived type definition
     type :: t_parameters
-        real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS
+        real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS, TRANSMISSION_GRID(2)
     end type
     type :: t_timer
         real :: start, end, sum = 0.0
     end type
     type :: t_kpointmesh
         real*8 :: kx, ky, weight
+    end type
+    type :: t_transmission
+        real*8 :: energy, tau
     end type
 
 
