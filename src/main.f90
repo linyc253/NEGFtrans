@@ -22,13 +22,14 @@ program main
     implicit none
     real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS, TRANSMISSION_GRID(3)
     integer :: NGX, NGY, N_circle, N_line_per_eV, NKX, NKY
+    logical :: if_density, if_transmission
     namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, &
-     N_circle, N_line_per_eV, GAP, NKX, NKY, VDS, TRANSMISSION_GRID
+     N_circle, N_line_per_eV, GAP, NKX, NKY, VDS, TRANSMISSION_GRID, if_density, if_transmission
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
     integer :: N_x, N_y, N_z, N, i, j, k, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1, N_E
-    type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time
+    type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time, trans_time
     type(t_kpointmesh), allocatable :: kpoint(:)
     type(t_transmission), allocatable :: Transmission(:)
     real*8 :: rescale_factor
@@ -82,6 +83,9 @@ program main
     N_circle = 40 ! (points/pi)
     N_line_per_eV = 500 ! (points/eV)
 
+    if_density = .false.
+    if_transmission = .false.
+
     !===Read Files===
     ! Read INPUT
     if(rank == 0) write(16, *) "Read in INPUT..."
@@ -105,6 +109,15 @@ program main
         end if
         if((NKX == 0) .or. (NKY == 0)) then
             write(16, *) "ERROR: NKX, NKY must be specified in INPUT"
+            call exit(STATUS)
+        end if
+        if(.not. (if_density .or. if_transmission)) then
+            write(16, *) "ERROR: At least one of (if_xxxxx) be .true."
+            write(16, *) "Nothing to do..."
+            call exit(STATUS)
+        end if
+        if(if_transmission .and. (TRANSMISSION_GRID(3) == 0.D0)) then
+            write(16, *) "ERROR: TRANSMISSION_GRID must be specified for (if_transmission = .true.)"
             call exit(STATUS)
         end if
         write(16, *) "-success-"
@@ -188,7 +201,6 @@ program main
         write(16, *) "The 'Inverse Matrix' time is proportional to (N^3 N_z)"
         write(16, *) "----------"
         write(16, *) "Transform Potential to plane wave basis..."
-        write(16, *) "----------"
         close(16)
     end if
 
@@ -208,116 +220,157 @@ program main
     call cpu_time(RtoP_time%end)
     RtoP_time%sum = RtoP_time%sum + RtoP_time%end - RtoP_time%start
 
-    ! ===STEP 2. Use NEGF to find 'Density_Matrix', parallelized===
     if(rank == 0) then
         open(unit=16, file="OUTPUT", status="old", position="append")
-        write(16, *) "Density calculation start..."
+        write(16, *) "DONE"
+        write(16, *) "----------"
         close(16)
     end if
 
-    Density_Matrix(:, :, :) = 0.D0
-    N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
-
-    N_job = (N_circle + N_line) * size(kpoint)
-    i_job = 1 + rank
-    do while(i_job <= N_job)
-        ! Density_Matrix = Density_Matrix + [Density_Matrix contribution of that energy point]
-        call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, &
-        kpoint, Density_Matrix, inverse_time)
-
-        i_job = i_job + mpi_size
-        
+    if(if_density) then
+        ! ===STEP 2. Use NEGF to find 'Density_Matrix', parallelized===
+        N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
-            write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
+            write(16, *) "Density calculation start..."
+            write(16, *) "Number of energy points for integration:", N_circle + N_line
+            write(16, *) "  ├── hemi-circle integral:", N_circle
+            write(16, *) "  └── line integral:", N_line
+            write(16, *) "Get Green's Function (Inverse Matrix):"
             close(16)
         end if
-    end do
 
-    ! Reduce from different rank
-    if(rank == 0) then !%%
-        call MPI_Reduce(MPI_IN_PLACE, Density_Matrix, size(Density_Matrix), &
-         MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-    else !%%
-        call MPI_Reduce(Density_Matrix, Density_Matrix, size(Density_Matrix), &
-        MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-    end if !%%
+        Density_Matrix(:, :, :) = 0.D0
+        N_job = (N_circle + N_line) * size(kpoint)
+        i_job = 1 + rank
+        do while(i_job <= N_job)
+            ! Density_Matrix = Density_Matrix + [Density_Matrix contribution of that energy point]
+            call Equilibrium_Density(i_job, V_reciprocal_all, nx_grid, ny_grid, N_circle, N_line, minval(V_real), atomic, &
+            kpoint, Density_Matrix, inverse_time)
 
-    ! ===STEP 3. Transform G_Function from plane wave basis to real space, parallelized===
+            i_job = i_job + mpi_size
+            
+            if(rank == 0) then
+                open(unit=16, file="OUTPUT", status="old", position="append")
+                write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
+                close(16)
+            end if
+        end do
 
-    ! Scatter to different rank
-    call cpu_time(PtoR_time%start)
-    subsize = ((size(Density_Matrix, 3) - 1) / mpi_size + 1)
-    allocate(sendbuf(N, N, subsize * mpi_size), recvbuf(N, N, subsize))
-    if(rank == 0) then
-        sendbuf(:, :, :) = 0.D0
-        do k=1, N_z
-            do j=1, N
-                do i=1, N
-                    sendbuf(i, j, k) = Density_Matrix(i, j, k)
+        ! Reduce from different rank
+        if(rank == 0) then !%%
+            call MPI_Reduce(MPI_IN_PLACE, Density_Matrix, size(Density_Matrix), &
+            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+        else !%%
+            call MPI_Reduce(Density_Matrix, Density_Matrix, size(Density_Matrix), &
+            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+        end if !%%
+
+        ! ===STEP 3. Transform G_Function from plane wave basis to real space, parallelized===
+        if(rank == 0) then
+            open(unit=16, file="OUTPUT", status="old", position="append")
+            write(16, *) "Transform Green's Function from plane wave basis to real space:"
+            close(16)
+        end if
+
+        ! Scatter to different rank
+        call cpu_time(PtoR_time%start)
+        subsize = ((size(Density_Matrix, 3) - 1) / mpi_size + 1)
+        allocate(sendbuf(N, N, subsize * mpi_size), recvbuf(N, N, subsize))
+        if(rank == 0) then
+            sendbuf(:, :, :) = 0.D0
+            do k=1, N_z
+                do j=1, N
+                    do i=1, N
+                        sendbuf(i, j, k) = Density_Matrix(i, j, k)
+                    end do
                 end do
             end do
+        end if
+        call MPI_Scatter(sendbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, &
+                        recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
+        deallocate(sendbuf)
+        allocate(sendbuf(N_x, N_y, subsize))
+
+        ! Calculation
+        do k=1, subsize
+            call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
+
+            if(rank == 0) then
+                open(unit=16, file="OUTPUT", status="old", position="append")
+                write(16, '(A2, I6, A2, I6)') "=>", k * mpi_size, " /", subsize * mpi_size
+                close(16)
+            end if
         end do
-    end if
-    call MPI_Scatter(sendbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, &
-                     recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
-    deallocate(sendbuf)
-    allocate(sendbuf(N_x, N_y, subsize))
 
-    ! Calculation
-    do k=1, subsize
-        call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
-    end do
-
-    ! Gather from different rank
-    deallocate(recvbuf)
-    allocate(recvbuf(N_x, N_y, subsize * mpi_size))
-    call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
-                     recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
-    if(rank == 0) then
-        do k=1, N_z
-            do j=1, N_y
-                do i=1, N_x
-                    Density(i, j, k) = aimag(recvbuf(i, j, k))
+        ! Gather from different rank
+        deallocate(recvbuf)
+        allocate(recvbuf(N_x, N_y, subsize * mpi_size))
+        call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
+                        recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
+        if(rank == 0) then
+            do k=1, N_z
+                do j=1, N_y
+                    do i=1, N_x
+                        Density(i, j, k) = aimag(recvbuf(i, j, k))
+                    end do
                 end do
             end do
-        end do
+        end if
+
+        ! Done
+        call cpu_time(PtoR_time%end)
+        PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
+
+        if(rank == 0) then
+            open(unit=16, file="OUTPUT", status="old", position="append")
+            write(16, *) "Density calculation DONE"
+            write(16, *) "----------"
+            close(16)
+        end if
     end if
-    call cpu_time(PtoR_time%end)
-    PtoR_time%sum = PtoR_time%sum + PtoR_time%end - PtoR_time%start
 
     ! ===STEP 4. Use NEGF to find 'Transmission coefficient', parallelized===
-    if(rank == 0) then
-        open(unit=16, file="OUTPUT", status="old", position="append")
-        write(16, *) "Transmission calculation start..."
-        close(16)
-    end if
+    if(if_transmission) then
+        if(rank == 0) then
+            open(unit=16, file="OUTPUT", status="old", position="append")
+            write(16, *) "Transmission calculation start..."
+            write(16, *) "Number of energy grid points:", N_E
+            close(16)
+        end if
 
-    Transmission(:)%tau = 0.D0
-    N_job = N_E * size(kpoint)
-    i_job = 1 + rank
-    do while(i_job <= N_job)
-        print *, "POINT0"
-        call Transmission_Coefficient(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
-        kpoint, Transmission)
+        Transmission(:)%tau = 0.D0
+        N_job = N_E * size(kpoint)
+        i_job = 1 + rank
+        do while(i_job <= N_job)
+            call Transmission_Coefficient(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
+            kpoint, Transmission, trans_time)
 
-        i_job = i_job + mpi_size
+            i_job = i_job + mpi_size
+
+            if(rank == 0) then
+                open(unit=16, file="OUTPUT", status="old", position="append")
+                write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
+                close(16)
+            end if
+        end do
+
+        ! Reduce from different rank
+        if(rank == 0) then !%%
+            call MPI_Reduce(MPI_IN_PLACE, Transmission%tau, size(Transmission%tau), &
+            MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+        else !%%
+            call MPI_Reduce(Transmission%tau, Transmission%tau, size(Transmission%tau), &
+            MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
+        end if !%%
 
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
-            write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
+            write(16, *) "Transmission calculation DONE"
+            write(16, *) "----------"
             close(16)
         end if
-    end do
-
-    ! Reduce from different rank
-    if(rank == 0) then !%%
-        call MPI_Reduce(MPI_IN_PLACE, Transmission%tau, size(Transmission%tau), &
-         MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-    else !%%
-        call MPI_Reduce(Transmission%tau, Transmission%tau, size(Transmission%tau), &
-         MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-    end if !%%
+    end if
 
     !===========================================END==============================================
     !============================================================================================
@@ -339,28 +392,38 @@ program main
 
         !　Write out data
         open(unit=16, file="OUTPUT", status="old", position="append")
-        write(16, *) "NEGF calculation DONE"
-        write(16, *) "----------"
-        write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ) / (N_x * N_y * N_z)
-        write(16, *) "Writing DENSITY..."
+        write(16, *) ""
+        write(16, *) "===== ALL NEGF calculation DONE ====="
+        write(16, *) ""
+        
+        if(if_density) then
+            write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ) / (N_x * N_y * N_z)
+            write(16, *) "Writing DENSITY..."
+            open(unit=18, file="DENSITY")
+            write(18, '(3I5)') N_x, N_y, N_z
+            write(18, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
+            close(18)
+        end if
 
-        open(unit=18, file="DENSITY")
-        write(18, '(3I5)') N_x, N_y, N_z
-        write(18, '(5G17.8)') (((Density(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
-        close(18)
-
-        open(unit=19, file="TRANSMISSION")
-        write(19, *) "   Energy (eV)    Transmission_coefficient"
-        write(19, '(2G17.8)') (Transmission(i)%energy, Transmission(i)%tau, i=1, size(Transmission))
-        close(19)
+        if(if_transmission) then
+            write(16, *) "Writing TRANSMISSION..."
+            open(unit=19, file="TRANSMISSION")
+            write(19, *) "   Energy (eV)    Transmission_coefficient"
+            write(19, '(2G17.8)') (Transmission(i)%energy, Transmission(i)%tau, i=1, size(Transmission))
+            close(19)
+        end if
 
         call cpu_time(total_time%end)
         total_time%sum = total_time%sum + total_time%end - total_time%start
+        
         write(16,*) "CPU time (Total): ", total_time%sum, "s"
-        write(16,*) "  CPU time (Real_space to Plane_wave): ", RtoP_time%sum, "s"
-        write(16,*) "  CPU time (Inverse Matrix): ", inverse_time%sum, "s"
-        write(16,*) "  CPU time (Plane_wave to Real_space): ", PtoR_time%sum, "s"
-        write(16,*) "  CPU time (Others): ", total_time%sum - RtoP_time%sum - inverse_time%sum - PtoR_time%sum, "s"
+        write(16,*) " ├── CPU time (Real space to Plane wave): ", RtoP_time%sum, "s"
+        write(16,*) " ├── CPU time (Density): ", inverse_time%sum + PtoR_time%sum, "s"
+        write(16,*) " │   ├── CPU time (Inverse Matrix): ", inverse_time%sum, "s"
+        write(16,*) " │   └── CPU time (Plane wave to Real space): ", PtoR_time%sum, "s"
+        write(16,*) " ├── CPU time (Transmission (Inverse Matrix)): ", trans_time%sum, "s"
+        write(16,*) " └── CPU time (Others): ", &
+        total_time%sum - RtoP_time%sum - inverse_time%sum - PtoR_time%sum - trans_time%sum, "s"
         write(16,*) "********************"
         write(16,*) "*                  *"
         write(16,*) "*      DONE        *"

@@ -45,11 +45,10 @@ contains
         E_c = (circle_R + circle_L) / 2
         E_R = (circle_R - circle_L) / 2
         
-        if(i_job == 1) then
+        if((i_job == 1) .and. DEBUG) then
             open(unit=16, file="OUTPUT", status="old", position="append")
-            write(16, *) "Total energy points for integration:", N_circle + N_line
-            write(16, *) "circle_L : circle_R = ", circle_L, ":", circle_R
-            write(16, *) "line_L : line_R = ", line_L, ":", line_R
+            write(16, *) "DEBUG: circle_L : circle_R = ", circle_L, ":", circle_R
+            write(16, *) "DEBUG: line_L : line_R = ", line_L, ":", line_R
             close(16)
         end if
 
@@ -118,10 +117,11 @@ contains
     end subroutine Equilibrium_Density
     
     subroutine Transmission_Coefficient(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
-        kpoint, Transmission)
+        kpoint, Transmission, trans_time)
         complex*16, intent(in), allocatable :: V_reciprocal_all(:, :, :)
         integer, intent(in) :: i_job, nx_grid(:), ny_grid(:)
         type(t_parameters), intent(in) :: atomic
+        type(t_timer), intent(inout) :: trans_time
         type(t_kpointmesh) :: kpoint(:)
         type(t_transmission), intent(inout) :: Transmission(:)
 
@@ -154,10 +154,10 @@ contains
          atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, E_minus_H)
 
         ! Solve for G_Function = (EI - Hamiltonian)^{-1}
-            ! call cpu_time(inverse_time%start) ! XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+        call cpu_time(trans_time%start)
         call GreensFunction_tri_solver(E_minus_H, G_Function)
-            ! call cpu_time(inverse_time%end)
-            ! inverse_time%sum = inverse_time%sum + inverse_time%end - inverse_time%start
+        call cpu_time(trans_time%end)
+        trans_time%sum = trans_time%sum + trans_time%end - trans_time%start
 
         ! Rescale to compensate the extra factor in E_minus_H
         do ii=1, 3

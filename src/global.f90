@@ -24,4 +24,7 @@ module global
     real*8, parameter :: a_0 = 0.529177210903D0 ! Bohr radius (in Angstrom)
     real*8, parameter :: pi = 3.141592653589793D0
 
+    ! DEBUG switcher
+    logical, parameter :: DEBUG = .false.
+
 end module global

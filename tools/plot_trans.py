@@ -13,7 +13,7 @@ DATA = np.loadtxt(filename, skiprows=1)
 E = DATA[:, 0]
 TAU = DATA[:, 1]
 
-plt.plot(E[:100], TAU[:100])
+plt.plot(E, TAU)
 plt.title("Transmission Coefficient")
 plt.xlabel("E (eV)")
 plt.ylabel(r"$\tau$")
