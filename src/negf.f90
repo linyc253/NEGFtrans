@@ -16,9 +16,9 @@ contains
         type(t_kpointmesh) :: kpoint(:)
         complex*16, intent(inout) :: Density_Matrix(:, :, :)
 
-        integer :: N_x, N_y, N_z, N, i, j, k, ii, i_integral, i_kpoint, N_integral
-        complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)&
-        , G_Function(:, :, :, :)
+        integer :: N_x, N_y, N_z, N, i, j, k, i_integral, i_kpoint, N_integral
+        complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)
+        type(t_gfunc), allocatable :: G_Function(:, :, :)
         real*8 :: circle_L, circle_R, line_L, line_R, E_c, E_R, theta, kx, ky
         complex*16 :: energy
 
@@ -33,7 +33,7 @@ contains
         N_z = size(Density_Matrix, 3)
         N = size(nx_grid)
         allocate(Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))
-        allocate(G_function(N, N, N_z, 3))
+        allocate(G_function(N, N, N_z))
         
         ! Determine integral parameters
         circle_L = min_V - 1.D0 / hartree
@@ -77,12 +77,12 @@ contains
         inverse_time%sum = inverse_time%sum + inverse_time%end - inverse_time%start
 
         ! Rescale to compensate the extra factor in E_minus_H
-        do ii=1, 3
-            do k=1, N_z
-                do j=1, N
-                    do i=1, N
-                        G_Function(i, j, k, ii) = G_Function(i, j, k, ii) * 2.D0 * (atomic%LZ / N_z) ** 2
-                    end do
+        do k=1, N_z
+            do j=1, N
+                do i=1, N
+                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal         * 2.D0 * (atomic%LZ / N_z) ** 2
+                    G_Function(i, j, k)%first_column = G_Function(i, j, k)%first_column * 2.D0 * (atomic%LZ / N_z) ** 2
+                    G_Function(i, j, k)%last_column = G_Function(i, j, k)%last_column   * 2.D0 * (atomic%LZ / N_z) ** 2
                 end do
             end do
         end do
@@ -95,7 +95,7 @@ contains
                         Density_Matrix(i, j, k) = Density_Matrix(i, j, k) + &
                          kpoint(i_kpoint)%weight * &
                          2.D0 / pi * coefficient_simpson(i_integral, N_circle, 0.D0, pi) * &
-                         complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * G_Function(i, j, k, 1)
+                         complex(0.D0, 1.D0) * E_R * exp(complex(0.D0, theta)) * G_Function(i, j, k)%diagonal
                     end do
                 end do
             end do
@@ -107,7 +107,7 @@ contains
                         Density_Matrix(i, j, k) = Density_Matrix(i, j, k) - &
                          kpoint(i_kpoint)%weight * &
                          2.D0 / pi * coefficient_simpson(i_integral - N_circle, N_line, line_L, line_R) * &
-                         fermi_func(dble(energy), atomic%MU, atomic%TEMPERATURE) * G_Function(i, j, k, 1)
+                         fermi_func(dble(energy), atomic%MU, atomic%TEMPERATURE) * G_Function(i, j, k)%diagonal
                     end do
                 end do
             end do
@@ -125,9 +125,9 @@ contains
         type(t_kpointmesh) :: kpoint(:)
         type(t_transmission), intent(inout) :: Transmission(:)
 
-        integer :: i, j, k, ii, N, N_z, N_E, i_energy, i_kpoint
-        complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)&
-        , G_Function(:, :, :, :)
+        integer :: i, j, k, N, N_z, N_E, i_energy, i_kpoint
+        complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)
+        type(t_gfunc), allocatable :: G_Function(:, :, :)
         real*8 :: kx, ky, tau
         complex*16 :: energy
 
@@ -141,7 +141,7 @@ contains
         N_z = size(V_reciprocal_all, 3)
         energy = Transmission(i_energy)%energy
         allocate(Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))
-        allocate(G_function(N, N, N_z, 3))
+        allocate(G_function(N, N, N_z))
 
         ! Construct Hamiltonian
         kx = kpoint(i_kpoint)%kx
@@ -160,15 +160,16 @@ contains
         trans_time%sum = trans_time%sum + trans_time%end - trans_time%start
 
         ! Rescale to compensate the extra factor in E_minus_H
-        do ii=1, 3
-            do k=1, N_z
-                do j=1, N
-                    do i=1, N
-                        G_Function(i, j, k, ii) = G_Function(i, j, k, ii) * 2.D0 * (atomic%LZ / N_z) ** 2
-                    end do
+        do k=1, N_z
+            do j=1, N
+                do i=1, N
+                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal         * 2.D0 * (atomic%LZ / N_z) ** 2
+                    G_Function(i, j, k)%first_column = G_Function(i, j, k)%first_column * 2.D0 * (atomic%LZ / N_z) ** 2
+                    G_Function(i, j, k)%last_column = G_Function(i, j, k)%last_column   * 2.D0 * (atomic%LZ / N_z) ** 2
                 end do
             end do
         end do
+
 
         ! Calculate Transmission
         call Transmission_solver(G_Function, Transmission(i_energy)%energy, nx_grid, ny_grid, atomic%LX, &

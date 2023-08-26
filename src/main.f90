@@ -266,7 +266,7 @@ program main
             MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
         end if !%%
 
-        ! ===STEP 3. Transform G_Function from plane wave basis to real space, parallelized===
+        ! ===STEP 3. Transform Density_Matrix from plane wave basis to real space, parallelized===
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
             write(16, *) "Transform Green's Function from plane wave basis to real space:"

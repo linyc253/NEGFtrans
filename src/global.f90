@@ -14,6 +14,9 @@ module global
     type :: t_transmission
         real*8 :: energy, tau
     end type
+    type t_gfunc
+        complex*16 :: diagonal, first_column, last_column
+    end type
 
 
     ! Unit converter, and some physical constant

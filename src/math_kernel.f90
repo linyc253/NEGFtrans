@@ -52,15 +52,15 @@ contains
     
             implicit none
             complex*16, intent(in) :: G_inv_D(:, :, :)
-            complex*16, intent(out) :: G_Function(:, :, :, :)
-            ! Structure of G_Function is (N, N, N_z, 3), with fourth dimension store:
-            !   1: diagonal element
-            !   2: first column element
-            !   3: last column element
+            type(t_gfunc), intent(out) :: G_Function(:, :, :)
+            ! Structure of G_Function:
+            !   G_Function%diagonal     : diagonal element of the inversed matrix
+            !   G_Function%first_column : first column element the inversed matrix
+            !   G_Function%last_column  : last column element the inversed matrix
             complex*16, allocatable :: generator_l(:, :, :), generator_r(:, :, :), Matrix(:, :)
             
             integer :: N_z, N, i, j, k
-    
+
             N_z = size(G_inv_D, 3)
             N = size(G_inv_D, 1)
             allocate(generator_l(N, N, N_z - 1))
@@ -90,50 +90,51 @@ contains
                 call inverse(Matrix, generator_r(:, :, N_z - k))
             end do
     
-            ! Get G_Function(:, 1) (i.e. diagonal element)
+            ! Get G_Function%diagonal (i.e. diagonal element)
             do j=1, N
                 do i=1, N
                     Matrix(i, j) = G_inv_D(i, j, 1) - generator_r(i, j, 1)
                 end do
             end do
-            call inverse(Matrix, G_Function(:, :, 1, 1))
+            call inverse(Matrix, G_Function(:, :, 1)%diagonal)
 
             do k=2, N_z
-                call matrix_product(G_Function(:, :, k - 1, 1), generator_r(:, :, k - 1), Matrix)
+                call matrix_product(G_Function(:, :, k - 1)%diagonal, generator_r(:, :, k - 1), Matrix)
                 do i=1, N
                     Matrix(i, i) = Matrix(i, i) + 1.D0
                 end do
-                call matrix_product(generator_r(:, :, k - 1), Matrix, G_Function(:, :, k, 1))
+                call matrix_product(generator_r(:, :, k - 1), Matrix, G_Function(:, :, k)%diagonal)
             end do
     
-            ! Get G_Function(:, 2) (i.e. first column element)
+            ! Get G_Function%first_column (i.e. first column element)
             do j=1, N
                 do i=1, N
-                    G_Function(i, j, 1, 2) = G_Function(i, j, 1, 1)
+                    G_Function(i, j, 1)%first_column = G_Function(i, j, 1)%diagonal
                 end do
             end do
             
             do k=2, N_z
-                call matrix_product(generator_r(:, :, k - 1), G_Function(:, :, k - 1, 2), G_Function(:, :, k, 2))
+                call matrix_product(generator_r(:, :, k - 1), G_Function(:, :, k - 1)%first_column, &
+                 G_Function(:, :, k)%first_column)
                 do j=1, N
                     do i=1, N
-                        G_Function(i, j, k, 2) = - G_Function(i, j, k, 2)
+                        G_Function(i, j, k)%first_column = - G_Function(i, j, k)%first_column
                     end do
                 end do
             end do
     
-            ! Get G_Function(:, 3) (i.e. last column element) 
-            ! Check the order if you want to generalize the code into block matrix
+            ! Get G_Function%last_column (i.e. last column element) 
             do j=1, N
                 do i=1, N
-                    G_Function(i, j, N_z, 3) = G_Function(i, j, N_z, 1)
+                    G_Function(i, j, N_z)%last_column = G_Function(i, j, N_z)%diagonal
                 end do
             end do
             do k=1, N_z - 1
-                call matrix_product(generator_l(:, :, N_z - k), G_Function(:, :, N_z - k + 1, 3), G_Function(:, :, N_z - k, 3))
+                call matrix_product(generator_l(:, :, N_z - k), G_Function(:, :, N_z - k + 1)%last_column, &
+                 G_Function(:, :, N_z - k)%last_column)
                 do j=1, N
                     do i=1, N
-                        G_Function(i, j, N_z - k, 3) = - G_Function(i, j, N_z - k, 3)
+                        G_Function(i, j, N_z - k)%last_column = - G_Function(i, j, N_z - k)%last_column
                     end do
                 end do
             end do

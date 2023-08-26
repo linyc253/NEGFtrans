@@ -334,7 +334,7 @@ contains
 
     subroutine Transmission_solver(G_Function, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
      kx, ky, V_L, V_R, tau)
-        complex*16, intent(in) :: G_Function(:, :, :, :)
+        type(t_gfunc), intent(in) :: G_Function(:, :, :)
         integer, intent(in) :: nx_grid(:), ny_grid(:)
         real*8, intent(in) :: energy, Lx, Ly, Lz, kx, ky, V_L, V_R
         real*8, intent(out) :: tau
@@ -362,14 +362,14 @@ contains
         ! Matrix_A = (\gamma_L)(g_{1, N_z})
         do j=1, N
             do i=1, N
-                Matrix_A(i, j) = sin(QR(i) * delta) / delta ** 2 * G_Function(i, j, N_z, 2)
+                Matrix_A(i, j) = sin(QR(i) * delta) / delta ** 2 * G_Function(i, j, N_z)%first_column
             end do
         end do
 
         ! Matrix_B = (\gamma_R)(g^{\dagger}_{1, N_z})
         do j=1, N
             do i=1, N
-                Matrix_B(i, j) = sin(QT(i) * delta) / delta ** 2 * conjg(G_Function(j, i, N_z, 2))
+                Matrix_B(i, j) = sin(QT(i) * delta) / delta ** 2 * conjg(G_Function(j, i, N_z)%first_column)
             end do
         end do
 
