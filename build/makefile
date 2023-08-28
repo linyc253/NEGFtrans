@@ -9,7 +9,7 @@ INCLUDE= -I/usr/local/include
 
 LIBS=-lfftw3 -llapack -lblas
 
-OBJS=grid.o math_kernel.o negf.o global.o
+OBJS=grid.o math_kernel.o negf.o global.o tools.o
 
 # Check tab by: cat -t makefile
 all: $(TARGET).x

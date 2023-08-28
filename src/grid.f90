@@ -6,7 +6,7 @@ module grid
     private
     public LocalPotential_RealToPlanewave, PlaneWaveBasis_construction_findsize, &
     Greensfunction_PlanewaveToReal, PlaneWaveBasis_construction, Hamiltonian_construction, &
-    print_c_matrix, NonLocalPotential_RealToPlanewave, E_minus_H_construction, &
+    NonLocalPotential_RealToPlanewave, E_minus_H_construction, &
     Kpoint_mesh_construction, Transmission_solver
 contains
     subroutine LocalPotential_RealToPlanewave(V_real, V_reciprocal)
@@ -447,45 +447,4 @@ contains
 
     end subroutine kpoint_mesh_construction
 
-    subroutine print_c_matrix(Matrix)
-        complex*16, intent(in) :: Matrix(:, :)
-
-        real*8, allocatable :: Matrix_abs(:, :)
-        integer :: i, j, N, M
-        N = size(Matrix, 1)
-        M = size(Matrix, 2)
-
-        allocate(Matrix_abs(N, M))
-        do j=1, M
-            do i=1, N
-                Matrix_abs(i, j) = abs(Matrix(i, j))
-            end do
-        end do
-        print *, "(", N, ",", M, ")"
-        print *, maxval(Matrix_abs)
-        print *, "=============================="
-    end subroutine print_c_matrix
-
-    subroutine print_c_tensor(Tensor)
-        complex*16, intent(in) :: Tensor(:, :, :, :)
-
-        real*8, allocatable :: Tensor_abs(:, :, :, :)
-        integer :: i, j, ii, jj, N, M
-        N = size(Tensor, 1)
-        M = size(Tensor, 3)
-
-        allocate(Tensor_abs(N, N, M, M))
-        do j=1, M
-            do i=1, N
-                do jj=1, M
-                    do ii=1, N
-                        Tensor_abs(i, ii, j, jj) = abs(Tensor(i, ii, j, jj))
-                    end do
-                end do
-            end do
-        end do
-        print *, "(", N, ",", N, ",", M, ",", M, ")"
-        print *, maxval(Tensor_abs)
-        print *, "=============================="
-    end subroutine print_c_tensor
 end module grid

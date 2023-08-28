@@ -3,7 +3,7 @@ module global
     
     ! Derived type definition
     type :: t_parameters
-        real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS, TRANSMISSION_GRID(2)
+        real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS, TRANSMISSION_GRID(2), LDOS_ENERGY_GRID(2)
     end type
     type :: t_timer
         real :: start, end, sum = 0.0
