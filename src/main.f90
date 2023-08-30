@@ -16,7 +16,7 @@ program main
     use math_kernel
     use grid
     use negf
-    use mpi !%%
+    use mpi
     use global
     use tools
 
@@ -31,39 +31,29 @@ program main
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
-    integer :: N_x, N_y, N_z, N, i, j, k, i_E, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1, N_E
-    integer :: ii, jj, kk
+    integer :: N_x, N_y, N_z, N, i, j, k, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1, N_E
+    integer :: ii, jj, kk, size_per_energy, i_energy, i_kpoint, mpi_subsize, subrank, energy_per_grid
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time, trans_time, LDOS_inverse_time, LDOS_PtoR_time
     type(t_kpointmesh), allocatable :: kpoint(:)
     type(t_transmission), allocatable :: Transmission(:)
     real*8 :: rescale_factor
     real*8, allocatable :: V_real(:, :, :), Density(:, :, :), LDOS(:, :, :, :)
     complex*16, allocatable :: V_reciprocal(:, :), V_reciprocal_all(:, :, :), Density_Matrix(:, :, :), &
-     sendbuf(:, :, :), recvbuf(:, :, :), LDOS_Matrix(:, :, :, :)
+     sendbuf(:, :, :), recvbuf(:, :, :), LDOS_Matrix(:, :, :)
     integer, allocatable :: nx_grid(:), ny_grid(:)
+    integer :: MPI_COMM_SUB
+    logical :: if_kill = .false.
 
-    call MPI_INIT(STATUS) !%%
-    call MPI_COMM_RANK(MPI_COMM_WORLD, rank, STATUS) !%%
-    call MPI_COMM_SIZE(MPI_COMM_WORLD, mpi_size, STATUS) !%%
+    call MPI_INIT(STATUS)
+    call MPI_COMM_RANK(MPI_COMM_WORLD, rank, STATUS)
+    call MPI_COMM_SIZE(MPI_COMM_WORLD, mpi_size, STATUS)
 
     if(rank == 0) then
-        open(unit=16, file="OUTPUT")
         call cpu_time(total_time%start)
-        write(16, *) "**********************************************************************"
-        write(16, *) " CALCULATES THE DENSITY AND TRANSMISSION OF A GIVEN POTENTIAL"
-        write(16, *) "   Using NEGF to calculate density and transmission coefficient with "
-        write(16, *) "   real grid in z-direction, and plane wave basis in xy-direction."
-        write(16, *) " input files:"
-        write(16, *) "   INPUT"
-        write(16, *) "   POTENTIAL"
-        write(16, *) " output files:"
-        write(16, *) "   OUTPUT"
-        write(16, *) "   DENSITY"
-        write(16, *) "   TRANSMISSION"
-        write(16, *) "   LDOS"
-        write(16, *) "                                   By YI-CHENG LIN at 2023/6/27"
-        write(16, *) "**********************************************************************"
-        write(16, *) ""
+
+        open(unit=16, file="OUTPUT")
+        call print_introduction(16)
+        write(16, *) "Calculated on ", ctime(time())
     end if
 
     !===Initialize Parameters===
@@ -71,7 +61,7 @@ program main
     V_R = 0.D0 ! eV
     MU = 5.568D0 ! eV (correspond to RS=3.0, i.e. Au)
     ETA = 1.D-5 ! Hartree
-    TEMPERATURE = 300.D0 ! K
+    TEMPERATURE = 20.D0 ! K
     LX = 0.D0 ! Angstrom
     LY = 0.D0 ! Angstrom
     LZ = 0.D0 ! Angstrom
@@ -109,33 +99,44 @@ program main
     end if
     
     ! Check INPUT parameters
+    if(rank == 0) write(16, *) "Checking Parameters..."
+
+    if((LX == 0.D0) .or. (LY == 0.D0) .or. (LZ == 0.D0)) then
+        if(rank == 0) write(16, *) "ERROR: LX, LY, LZ must be specified in INPUT"
+        if_kill = .true.
+    end if
+    if((NKX == 0) .or. (NKY == 0)) then
+        if(rank == 0) write(16, *) "ERROR: NKX, NKY must be specified in INPUT"
+        if_kill = .true.
+    end if
+    if(.not. (if_density .or. if_transmission .or. if_LDOS)) then
+        if(rank == 0) write(16, *) "ERROR: At least one of (if_xxxxx) be .true.   Nothing to do..."
+        if_kill = .true.
+    end if
+    if(if_transmission .and. (TRANSMISSION_GRID(3) == 0.D0)) then
+        if(rank == 0) write(16, *) "ERROR: TRANSMISSION_GRID must be specified for (if_transmission = .true.)"
+        if_kill = .true.
+    end if
+    if(if_LDOS .and. (LDOS_ENERGY_GRID(3) == 0.D0)) then
+        if(rank == 0) write(16, *) "ERROR: LDOS_ENERGY_GRID must be specified for (if_LDOS = .true.)"
+        if_kill = .true.
+    end if
+    if(if_LDOS .and. ((LDOS_GRID(1) < -1) .or. (LDOS_GRID(2) < -1) .or. (LDOS_GRID(3) < -1))) then
+        if(rank == 0) write(16, *) "ERROR: LDOS_GRID must be specified for (if_LDOS = .true.)"
+        if_kill = .true.
+    end if
+    if(VDS /= 0.D0) then
+        if(rank == 0) write(16, *) "ERROR: VDS must be zero in this version, please upgrade to higher version."
+        if_kill = .true.
+    end if
+
+
+    if(if_kill) then
+        call MPI_FINALIZE(STATUS)
+        call exit(STATUS)
+    end if
+
     if(rank == 0) then
-        write(16, *) "Checking Parameters..."
-        if((LX == 0.D0) .or. (LY == 0.D0) .or. (LZ == 0.D0)) then
-            write(16, *) "ERROR: LX, LY, LZ must be specified in INPUT"
-            call exit(STATUS)
-        end if
-        if((NKX == 0) .or. (NKY == 0)) then
-            write(16, *) "ERROR: NKX, NKY must be specified in INPUT"
-            call exit(STATUS)
-        end if
-        if(.not. (if_density .or. if_transmission .or. if_LDOS)) then
-            write(16, *) "ERROR: At least one of (if_xxxxx) be .true."
-            write(16, *) "Nothing to do..."
-            call exit(STATUS)
-        end if
-        if(if_transmission .and. (TRANSMISSION_GRID(3) == 0.D0)) then
-            write(16, *) "ERROR: TRANSMISSION_GRID must be specified for (if_transmission = .true.)"
-            call exit(STATUS)
-        end if
-        if(if_LDOS .and. (LDOS_ENERGY_GRID(3) == 0.D0)) then
-            write(16, *) "ERROR: LDOS_ENERGY_GRID must be specified for (if_LDOS = .true.)"
-            call exit(STATUS)
-        end if
-        if(if_LDOS .and. ((LDOS_GRID(1) < -1) .or. (LDOS_GRID(2) < -1) .or. (LDOS_GRID(3) < -1))) then
-            write(16, *) "ERROR: LDOS_GRID must be specified for (if_LDOS = .true.)"
-            call exit(STATUS)
-        end if
         write(16, *) "-success-"
         write(16, *) "The Parameters are:"
         write(16, INPUT)
@@ -218,7 +219,7 @@ program main
     !============================================================================================
     !==========================================START=============================================
 
-    ! ===STEP 1. Construct 'V_reciprocal_all'===
+    ! =====GENERAL PROCEDURE: Construct 'V_reciprocal_all'=====
     call cpu_time(RtoP_time%start)
     do k=1, N_z
         call LocalPotential_RealToPlanewave(V_real(:, :, k), V_reciprocal)
@@ -238,8 +239,9 @@ program main
         close(16)
     end if
 
+    ! =====PART 1: Use NEGF to find 'Density'=====
     if(if_density) then
-        ! ===STEP 2. Use NEGF to find 'Density_Matrix', parallelized===
+        ! ---step 1. Calculate Density_Matrix, parallelized---
         N_line = IDNINT(N_line_per_eV * ((2 * atomic%GAP) * hartree))
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
@@ -269,15 +271,15 @@ program main
         end do
 
         ! Reduce from different rank
-        if(rank == 0) then !%%
+        if(rank == 0) then
             call MPI_Reduce(MPI_IN_PLACE, Density_Matrix, size(Density_Matrix), &
-            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-        else !%%
+            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS)
+        else
             call MPI_Reduce(Density_Matrix, Density_Matrix, size(Density_Matrix), &
-            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-        end if !%%
+            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS)
+        end if
 
-        ! ===STEP 3. Transform Density_Matrix from plane wave basis to real space, parallelized===
+        ! ---step 2. Transform Density_Matrix from plane wave basis to real space, parallelized---
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
             write(16, *) "Transform Green's Function from plane wave basis to real space:"
@@ -299,7 +301,7 @@ program main
             end do
         end if
         call MPI_Scatter(sendbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, &
-                        recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
+                        recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS)
         deallocate(sendbuf)
         allocate(sendbuf(N_x, N_y, subsize))
 
@@ -318,16 +320,19 @@ program main
         deallocate(recvbuf)
         allocate(recvbuf(N_x, N_y, subsize * mpi_size))
         call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
-                        recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
+                        recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS)
         if(rank == 0) then
+            rescale_factor = dble(N_z) / (LX * LY * LZ)
             do k=1, N_z
                 do j=1, N_y
                     do i=1, N_x
-                        Density(i, j, k) = aimag(recvbuf(i, j, k))
+                        ! Unit: (Angstrom^{-3})
+                        Density(i, j, k) = aimag(recvbuf(i, j, k)) * rescale_factor
                     end do
                 end do
             end do
         end if
+        deallocate(sendbuf, recvbuf)
 
         ! Done
         call cpu_time(PtoR_time%end)
@@ -341,7 +346,7 @@ program main
         end if
     end if
 
-    ! ===STEP 4. Use NEGF to find 'Transmission coefficient', parallelized===
+    ! =====PART 2. Use NEGF to find 'Transmission Coefficient', parallelized=====
     if(if_transmission) then
         ! Transmission-energy-grid layout
         N_E = nint(TRANSMISSION_GRID(3))
@@ -376,13 +381,13 @@ program main
         end do
 
         ! Reduce from different rank
-        if(rank == 0) then !%%
+        if(rank == 0) then
             call MPI_Reduce(MPI_IN_PLACE, Transmission%tau, size(Transmission%tau), &
-            MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-        else !%%
+            MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS)
+        else
             call MPI_Reduce(Transmission%tau, Transmission%tau, size(Transmission%tau), &
-            MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-        end if !%%
+            MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS)
+        end if
 
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
@@ -392,115 +397,136 @@ program main
         end if
     end if
 
-    
+    ! =====PART 3. Use NEGF to find 'Local Density Of State'=====
     if(if_LDOS) then
-        ! ===STEP 5. Use NEGF to find 'Local Density Of State', parallelized===
+        
         ! Layout LDOS grid
         N_E = nint(LDOS_ENERGY_GRID(3))
-        allocate(LDOS_Matrix(N, N, N_z, N_E))
+        allocate(LDOS_Matrix(N, N, N_z))
         allocate(LDOS(LDOS_size(LDOS_GRID(1), N_x), LDOS_size(LDOS_GRID(2), N_y), &
          LDOS_size(LDOS_GRID(3), N_z), N_E))
 
+        size_per_energy = mpi_distribution(mpi_size, N_E, size(kpoint))
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
             write(16, *) "LDOS calculation start..."
             write(16, *) "Number of energy grid points:", N_E
+            write(16, *) "size_per_energy =", size_per_energy
             close(16)
         end if
-    
-        ! MPI calculation
-        LDOS_Matrix(:, :, :, :) = 0.D0
-        N_job = N_E * size(kpoint)
-        i_job = 1 + rank
-        do while(i_job <= N_job)
-            call Local_Density_Of_State(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
-            kpoint, LDOS_Matrix, LDOS_inverse_time)
 
-            i_job = i_job + mpi_size
-            
+        ! Distribute MPI_COMM_SUB
+        call MPI_COMM_SPLIT(MPI_COMM_WORLD, rank / size_per_energy, rank, MPI_COMM_SUB, STATUS)
+        call MPI_COMM_RANK(MPI_COMM_SUB, subrank, STATUS)
+        call MPI_COMM_SIZE(MPI_COMM_SUB, mpi_subsize, STATUS)
+
+        ! MPI calculation, top-level parallelization
+        LDOS(:, :, :, :) = 0.D0
+        energy_per_grid = mpi_size / size_per_energy
+        i_energy = 1 + rank / size_per_energy
+        do while((i_energy <= N_E) .and. (rank < size_per_energy * energy_per_grid))
+
+            ! ---step 1. Calculate LDOS_Matrix, sub-level parallelized---
+            i_kpoint = 1 + subrank
+            LDOS_Matrix(:, :, :) = 0.D0
+            do while(i_kpoint <= size(kpoint))
+                call Local_Density_Of_State(i_kpoint, i_energy, N_E, V_reciprocal_all, nx_grid, ny_grid, atomic,&
+                kpoint, LDOS_Matrix, LDOS_inverse_time)
+                
+                !print *, "POINT0", rank, subrank, i_energy, i_kpoint
+                i_kpoint = i_kpoint + mpi_subsize
+
+                if(rank == 0) then
+                    open(unit=16, file="OUTPUT", status="old", position="append")
+                    write(16, '(A2, I6, A2, I6)') "=>", &
+                    min((i_kpoint - 1) * (i_energy + energy_per_grid - 1), size(kpoint) * N_E), " /", size(kpoint) * N_E
+                    close(16)
+                end if
+            end do
+
+            ! Reduce from different subrank
+            if(subrank == 0) then
+                call MPI_Reduce(MPI_IN_PLACE, LDOS_Matrix, size(LDOS_Matrix), &
+                MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_SUB, STATUS)
+            else
+                call MPI_Reduce(LDOS_Matrix, LDOS_Matrix, size(LDOS_Matrix), &
+                MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_SUB, STATUS)
+            end if
+
+            ! ---step 2. Transform LDOS_Matrix from plane wave basis to real space, sub-level parallelized---
             if(rank == 0) then
                 open(unit=16, file="OUTPUT", status="old", position="append")
-                write(16, '(A2, I6, A2, I6)') "=>", min(i_job - 1, N_job), " /", N_job
+                write(16, *) "Transform LDOS from plane wave basis to real space..."
                 close(16)
             end if
-        end do
 
-        ! Reduce from different rank
-        if(rank == 0) then !%%
-            call MPI_Reduce(MPI_IN_PLACE, LDOS_Matrix, size(LDOS_Matrix), &
-            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-        else !%%
-            call MPI_Reduce(LDOS_Matrix, LDOS_Matrix, size(LDOS_Matrix), &
-            MPI_DOUBLE_COMPLEX, MPI_SUM, 0, MPI_COMM_WORLD, STATUS) !%%
-        end if !%%
-
-        ! ===STEP 6. Transform LDOS_Matrix from plane wave basis to real space, parallelized===
-        if(rank == 0) then
-            open(unit=16, file="OUTPUT", status="old", position="append")
-            write(16, *) "Transform LDOS from plane wave basis to real space:"
-            close(16)
-        end if
-
-        ! Scatter to different rank
-        call cpu_time(LDOS_PtoR_time%start)
-        subsize = ((size(LDOS_Matrix, 3) + size(LDOS_Matrix, 4) - 1) / mpi_size + 1)
-        allocate(sendbuf(N, N, subsize * mpi_size), recvbuf(N, N, subsize))
-        if(rank == 0) then
-            sendbuf(:, :, :) = 0.D0
-            do i_E=1, N_E
+            ! Scatter to different rank
+            call cpu_time(LDOS_PtoR_time%start)
+            subsize = ((size(LDOS_Matrix, 3) - 1) / mpi_subsize + 1)
+            allocate(sendbuf(N, N, subsize * mpi_subsize), recvbuf(N, N, subsize))
+            if(subrank == 0) then
+                sendbuf(:, :, :) = 0.D0
                 do k=1, N_z
                     do j=1, N
                         do i=1, N
-                            sendbuf(i, j, k + (i_E - 1) * N_z) = LDOS_Matrix(i, j, k, i_E)
+                            sendbuf(i, j, k) = LDOS_Matrix(i, j, k)
                         end do
                     end do
                 end do
-            end do
-        end if
-        call MPI_Scatter(sendbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, &
-                        recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
-        deallocate(sendbuf)
-        allocate(sendbuf(N_x, N_y, subsize))
-
-        ! Calculation
-        do k=1, subsize
-            call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
-
-            if(rank == 0) then
-                open(unit=16, file="OUTPUT", status="old", position="append")
-                write(16, '(A2, I6, A2, I6)') "=>", k * mpi_size, " /", subsize * mpi_size
-                close(16)
             end if
-        end do
+            call MPI_Scatter(sendbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, &
+                            recvbuf, size(recvbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_SUB, STATUS)
+            deallocate(sendbuf)
+            allocate(sendbuf(N_x, N_y, subsize))
 
-        ! Gather from different rank
-        deallocate(recvbuf)
-        allocate(recvbuf(N_x, N_y, subsize * mpi_size))
-        call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
-                        recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, STATUS) !%%
-        
-        LDOS(:, :, :, :) = 0.D0
-        if(rank == 0) then
-            do i_E=1, N_E
+            ! Calculation
+            do k=1, subsize
+                call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
+            end do
+
+            ! Gather from different rank
+            deallocate(recvbuf)
+            allocate(recvbuf(N_x, N_y, subsize * mpi_subsize))
+            call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
+                            recvbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, 0, MPI_COMM_SUB, STATUS)
+            
+            
+            if(subrank == 0) then
                 do k=1, N_z
                     do j=1, N_y
                         do i=1, N_x
-                            rescale_factor = 1.D0
-                            call LDOS_grid_converter(i, LDOS_GRID(1), N_x, ii, rescale_factor)
-                            call LDOS_grid_converter(j, LDOS_GRID(2), N_y, jj, rescale_factor)
-                            call LDOS_grid_converter(k, LDOS_GRID(3), N_z, kk, rescale_factor)
+                            rescale_factor = dble(N_z) / (LX * LY * LZ) / hartree
+                            call LDOS_grid_converter(i, LDOS_GRID(1), LX / N_x, ii, rescale_factor)
+                            call LDOS_grid_converter(j, LDOS_GRID(2), LY / N_y, jj, rescale_factor)
+                            call LDOS_grid_converter(k, LDOS_GRID(3), LZ / N_z, kk, rescale_factor)
 
-                            LDOS(ii, jj, kk, i_E) = LDOS(ii, jj, kk, i_E) + &
-                             aimag(recvbuf(i, j, k + (i_E - 1) * N_z)) * rescale_factor
+                            ! Unit: (Angstrom^{-n} eV^{-1})
+                            !                  where [n = 3 - (dimension integrated out)]
+                            LDOS(ii, jj, kk, i_energy) = LDOS(ii, jj, kk, i_energy) + &
+                            aimag(recvbuf(i, j, k)) * rescale_factor
                         end do
                     end do
                 end do
-            end do
+            end if
+            deallocate(sendbuf, recvbuf)
+
+            ! Done
+            call cpu_time(LDOS_PtoR_time%end)
+            LDOS_PtoR_time%sum = LDOS_PtoR_time%sum + LDOS_PtoR_time%end - LDOS_PtoR_time%start
+
+            i_energy = i_energy + energy_per_grid
+        end do
+
+        ! Free MPI_COMM_SUB
+        call MPI_COMM_FREE(MPI_COMM_SUB, STATUS)
+
+        ! Reduce from different rank
+        if(rank == 0) then
+            call MPI_Reduce(MPI_IN_PLACE, LDOS, size(LDOS), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS)
+        else
+            call MPI_Reduce(LDOS, LDOS, size(LDOS), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, STATUS)
         end if
 
-        ! Done
-        call cpu_time(LDOS_PtoR_time%end)
-        LDOS_PtoR_time%sum = LDOS_PtoR_time%sum + LDOS_PtoR_time%end - LDOS_PtoR_time%start
 
         if(rank == 0) then
             open(unit=16, file="OUTPUT", status="old", position="append")
@@ -523,15 +549,6 @@ program main
         write(16, *) ""
         
         if(if_density) then
-            ! Rescale Density (Unit: 1/Angstrom^3)
-            rescale_factor = dble(N_z) / (LX * LY * LZ)
-            do k=1, N_z
-                do j=1, N_y
-                    do i=1, N_x
-                        Density(i, j, k) = Density(i, j, k) * rescale_factor ! unit: 1/Angstrom^3
-                    end do
-                end do
-            end do
             ! Write
             write(16, *) "Total charge is:", sum(Density) * (LX * LY * LZ) / (N_x * N_y * N_z)
             write(16, *) "Writing DENSITY..."
@@ -555,23 +572,12 @@ program main
         end if
 
         if(if_LDOS) then
-            ! Rescale LDOS (Unit: 1/Angstrom^3)
-            rescale_factor = dble(N_z) / (LX * LY * LZ)
-            do i_E=1, size(LDOS, 4)
-                do k=1, size(LDOS, 3)
-                    do j=1, size(LDOS, 2)
-                        do i=1, size(LDOS, 1)
-                            LDOS(i, j, k, i_E) = LDOS(i, j, k, i_E) * rescale_factor ! unit: 1/Angstrom^3
-                        end do
-                    end do
-                end do
-            end do
             ! Write
             write(16, *) "Writing LDOS..."
             open(unit=20, file="LDOS")
             write(20, '(4I5)') size(LDOS, 1), size(LDOS, 2), size(LDOS, 3), size(LDOS, 4)
-            write(20, '(5G17.8)') ((((LDOS(i, j, k, i_E), i=1, size(LDOS, 1)), j=1, size(LDOS, 2)),&
-             k=1, size(LDOS, 3)), i_E=1, size(LDOS, 4))
+            write(20, '(5G17.8)') ((((LDOS(i, j, k, i_energy), i=1, size(LDOS, 1)), j=1, size(LDOS, 2)),&
+             k=1, size(LDOS, 3)), i_energy=1, size(LDOS, 4))
             close(20)
         end if
 
@@ -598,5 +604,5 @@ program main
         close(16)
     end if
 
-    call MPI_FINALIZE(STATUS) !%%
+    call MPI_FINALIZE(STATUS)
 end program main

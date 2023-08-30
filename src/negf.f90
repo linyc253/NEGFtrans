@@ -179,25 +179,20 @@ contains
         
     end subroutine Transmission_Coefficient
 
-    subroutine Local_Density_Of_State(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
+    subroutine Local_Density_Of_State(i_kpoint, i_energy, N_E, V_reciprocal_all, nx_grid, ny_grid, atomic,&
         kpoint, LDOS_Matrix, LDOS_inverse_time)
         complex*16, intent(in), allocatable :: V_reciprocal_all(:, :, :)
-        integer, intent(in) :: i_job, nx_grid(:), ny_grid(:)
+        integer, intent(in) :: i_kpoint, i_energy, N_E, nx_grid(:), ny_grid(:)
         type(t_parameters), intent(in) :: atomic
         type(t_timer), intent(inout) :: LDOS_inverse_time
         type(t_kpointmesh) :: kpoint(:)
-        complex*16, intent(inout) :: LDOS_Matrix(:, :, :, :)
+        complex*16, intent(inout) :: LDOS_Matrix(:, :, :)
 
-        integer :: N_z, N, i, j, k, i_energy, i_kpoint, N_E
+        integer :: N_z, N, i, j, k
         complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)
         type(t_gfunc), allocatable :: G_Function(:, :, :)
         real*8 :: kx, ky
         complex*16 :: energy
-
-        ! Distribute i_job
-        N_E = size(LDOS_Matrix, 4)
-        i_energy = 1 + mod(i_job - 1, N_E)
-        i_kpoint = 1 + (i_job - 1) / N_E ! fractional part (remainder) is discarded
 
         ! Allocate arrays
         N_z = size(V_reciprocal_all, 3)
@@ -240,7 +235,7 @@ contains
         do k=1, N_z
             do j=1, N
                 do i=1, N
-                    LDOS_Matrix(i, j, k, i_energy) = LDOS_Matrix(i, j, k, i_energy) - &
+                    LDOS_Matrix(i, j, k) = LDOS_Matrix(i, j, k) - &
                      kpoint(i_kpoint)%weight * 1.D0 / pi  * G_Function(i, j, k)%diagonal
                 end do
             end do

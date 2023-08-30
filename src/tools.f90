@@ -1,7 +1,7 @@
 module tools
     implicit none
     private
-    public LDOS_size, LDOS_grid_converter
+    public LDOS_size, LDOS_grid_converter, mpi_distribution, print_introduction
 contains
     function LDOS_size(LDOS_GRID_value, N_i) result(NN)
         integer, intent(in) :: LDOS_GRID_value, N_i
@@ -15,8 +15,9 @@ contains
         
     end function LDOS_size
 
-    subroutine LDOS_grid_converter(i, LDOS_GRID_value, N_i, ii, rescale_factor)
-        integer, intent(in) :: i, LDOS_GRID_value, N_i
+    subroutine LDOS_grid_converter(i, LDOS_GRID_value, delta_i, ii, rescale_factor)
+        integer, intent(in) :: i, LDOS_GRID_value
+        real*8, intent(in) :: delta_i
         integer, intent(out) :: ii
         real*8, intent(inout) :: rescale_factor
 
@@ -29,7 +30,7 @@ contains
         if(LDOS_GRID_value == 0) then
             rescale_factor = rescale_factor
         else if(LDOS_GRID_value == -1) then
-            rescale_factor = rescale_factor / N_i
+            rescale_factor = rescale_factor * delta_i
         else if(LDOS_GRID_value == i) then
             rescale_factor = rescale_factor
         else
@@ -38,6 +39,49 @@ contains
 
     end subroutine LDOS_grid_converter
 
+    function mpi_distribution(mpi_size, N_E, Nk) result(BEST_size_per_energy)
+        integer, intent(in) :: mpi_size, N_E, Nk
+        integer :: size_per_energy, BEST_size_per_energy, energy_per_grid, waste, min_waste, k_loop
+
+        if(mpi_size > N_E * Nk) then
+            BEST_size_per_energy = mpi_size / N_E 
+        else
+            min_waste = 1000000000
+            do size_per_energy=1, min(Nk, mpi_size)
+                energy_per_grid = min(mpi_size / size_per_energy, 1)
+                k_loop = ceiling(real(Nk) / size_per_energy)
+                waste = max(mpi_size - size_per_energy * energy_per_grid, mpi_size - N_E) * k_loop +&
+                (k_loop * size_per_energy - Nk) * size_per_energy
+                waste = waste * ceiling(real(N_E) / energy_per_grid)
+                print *, size_per_energy, waste
+                if(waste < min_waste) then
+                    BEST_size_per_energy = size_per_energy
+                    min_waste = waste
+                end if
+            end do
+        end if
+
+    end function
+
+    subroutine print_introduction(unit)
+        integer, intent(in) :: unit
+        write(unit, *) "**********************************************************************"
+        write(unit, *) " CALCULATES THE DENSITY AND TRANSMISSION OF A GIVEN POTENTIAL"
+        write(unit, *) "   Using NEGF to calculate density and transmission coefficient with "
+        write(unit, *) "   real grid in z-direction, and plane wave basis in xy-direction."
+        write(unit, *) " input files:"
+        write(unit, *) "   INPUT"
+        write(unit, *) "   POTENTIAL"
+        write(unit, *) " output files:"
+        write(unit, *) "   OUTPUT"
+        write(unit, *) "   DENSITY"
+        write(unit, *) "   TRANSMISSION"
+        write(unit, *) "   LDOS"
+        write(unit, *) "                                   By YI-CHENG LIN at 2023/6/27"
+        write(unit, *) "**********************************************************************"
+        write(unit, *) ""
+    end subroutine print_introduction
+    
     subroutine print_c_matrix(Matrix)
         complex*16, intent(in) :: Matrix(:, :)
 
