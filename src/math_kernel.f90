@@ -68,7 +68,6 @@ contains
             allocate(Matrix(N, N))
     
             ! Calculate generator_l()
-            ! Check the order if you want to generalize the code into block matrix
             call inverse(G_inv_D(:, :, 1), generator_l(:, :, 1))
             do k=2, N_z - 1
                 do j=1, N

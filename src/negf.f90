@@ -16,7 +16,7 @@ contains
         type(t_kpointmesh) :: kpoint(:)
         complex*16, intent(inout) :: Density_Matrix(:, :, :)
 
-        integer :: N_x, N_y, N_z, N, i, j, k, i_integral, i_kpoint, N_integral
+        integer :: N_z, N, i, j, k, i_integral, i_kpoint, N_integral
         complex*16, allocatable :: Hamiltonian(:, :, :), E_minus_H(:, :, :)
         type(t_gfunc), allocatable :: G_Function(:, :, :)
         real*8 :: circle_L, circle_R, line_L, line_R, E_c, E_R, theta, kx, ky
@@ -28,8 +28,6 @@ contains
         i_kpoint = 1 + (i_job - 1) / N_integral ! fractional part (remainder) is discarded
 
         ! Allocate arrays
-        N_x = size(Density_Matrix, 1)
-        N_y = size(Density_Matrix, 2)
         N_z = size(Density_Matrix, 3)
         N = size(nx_grid)
         allocate(Hamiltonian(N, N, N_z), E_minus_H(N, N, N_z))

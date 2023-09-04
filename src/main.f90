@@ -21,16 +21,42 @@ program main
     use tools
 
     implicit none
-    real*8 :: V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, ENCUT, GAP, VDS, TRANSMISSION_GRID(3), &
-     LDOS_ENERGY_GRID(3)
-    integer :: NGX, NGY, N_circle, N_line_per_eV, NKX, NKY, LDOS_GRID(3)
-    logical :: if_density, if_transmission, if_LDOS
+
+    !===Declare and Initialize INPUT Parameters===
+    logical :: if_density = .false.
+    logical :: if_transmission = .false.
+    logical :: if_LDOS = .false.
+
+    real*8 :: V_L = 0.D0 ! eV
+    real*8 :: V_R = 0.D0 ! eV
+    real*8 :: MU = 5.568D0 ! eV (correspond to RS=3.0, i.e. Au)
+    real*8 :: ETA = 1.D-5 ! Hartree
+    real*8 :: TEMPERATURE = 20.D0 ! K
+    real*8 :: LX = 0.D0 ! Angstrom
+    real*8 :: LY = 0.D0 ! Angstrom
+    real*8 :: LZ = 0.D0 ! Angstrom
+    real*8 :: ENCUT = 100.D0 ! eV
+    real*8 :: GAP = 6.D0 ! k_B * TEMPERATURE
+    real*8 :: VDS = 0.D0 ! eV
+    real*8 :: TRANSMISSION_GRID(3) = 0.D0
+    real*8 :: LDOS_ENERGY_GRID(3) = 0.D0
+
+    integer :: LDOS_GRID(3) = -10
+    integer :: NGX = 0
+    integer :: NGY = 0
+    integer :: NKX = 0
+    integer :: NKY = 0
+    integer :: N_circle = 40 ! (points/pi)
+    integer :: N_line_per_eV = 500 ! (points/eV)
+
     namelist /INPUT/ V_L, V_R, MU, ETA, TEMPERATURE, LX, LY, LZ, NGX, NGY, ENCUT, &
      N_circle, N_line_per_eV, GAP, NKX, NKY, VDS, TRANSMISSION_GRID, if_density, if_transmission, if_LDOS, &
      LDOS_ENERGY_GRID, LDOS_GRID
     
     ! All the input parameters will be converted to atomic unit and stored in "atomic"
     type(t_parameters) :: atomic
+
+    !===Declare other variables===
     integer :: N_x, N_y, N_z, N, i, j, k, subsize, STATUS, N_line, i_job, N_job, rank = 0, mpi_size = 1, N_E
     integer :: ii, jj, kk, size_per_energy, i_energy, i_kpoint, mpi_subsize, subrank, energy_per_grid
     type(t_timer) :: total_time, inverse_time, RtoP_time, PtoR_time, trans_time, LDOS_inverse_time, LDOS_PtoR_time
@@ -44,6 +70,7 @@ program main
     integer :: MPI_COMM_SUB
     logical :: if_kill = .false.
 
+
     call MPI_INIT(STATUS)
     call MPI_COMM_RANK(MPI_COMM_WORLD, rank, STATUS)
     call MPI_COMM_SIZE(MPI_COMM_WORLD, mpi_size, STATUS)
@@ -56,32 +83,6 @@ program main
         write(16, *) "Calculated on ", ctime(time())
     end if
 
-    !===Initialize Parameters===
-    V_L = 0.D0 ! eV
-    V_R = 0.D0 ! eV
-    MU = 5.568D0 ! eV (correspond to RS=3.0, i.e. Au)
-    ETA = 1.D-5 ! Hartree
-    TEMPERATURE = 20.D0 ! K
-    LX = 0.D0 ! Angstrom
-    LY = 0.D0 ! Angstrom
-    LZ = 0.D0 ! Angstrom
-    ENCUT = 100.D0 ! eV
-    GAP = 6.D0 ! k_B * TEMPERATURE
-    VDS = 0.D0 ! eV
-    TRANSMISSION_GRID(:) = 0.D0
-    LDOS_ENERGY_GRID(:) = 0.D0
-    LDOS_GRID(:) = -10
-    
-    NGX = 0
-    NGY = 0
-    NKX = 0
-    NKY = 0
-    N_circle = 40 ! (points/pi)
-    N_line_per_eV = 500 ! (points/eV)
-
-    if_density = .false.
-    if_transmission = .false.
-    if_LDOS = .false.
 
     !===Read Files===
     ! Read INPUT
@@ -132,6 +133,13 @@ program main
 
 
     if(if_kill) then
+        if (rank == 0) then
+            write(16,*) "********************"
+            write(16,*) "*                  *"
+            write(16,*) "*      EXIT        *"
+            write(16,*) "*                  *"
+            write(16,*) "********************"
+        end if
         call MPI_FINALIZE(STATUS)
         call exit(STATUS)
     end if
@@ -151,12 +159,21 @@ program main
     read(17, *) (((V_real(i, j, k), i=1, N_x), j=1, N_y), k=1, N_z)
     close(17)
 
-    if(rank == 0) then
-        ! Check N_x, N_y
-        if((mod(N_x, 2) == 1) .or. (mod(N_y, 2) == 1)) then
+    ! Check N_x, N_y
+    if((mod(N_x, 2) == 1) .or. (mod(N_y, 2) == 1)) then
+        if (rank == 0) then
             write(16, *) "ERROR: The number of grid point in x & y direction must be even number"
-            call exit(STATUS)
+            write(16,*) "********************"
+            write(16,*) "*                  *"
+            write(16,*) "*      EXIT        *"
+            write(16,*) "*                  *"
+            write(16,*) "********************"
         end if
+        call MPI_FINALIZE(STATUS)
+        call exit(STATUS)
+    end if
+
+    if(rank == 0) then
         write(16, *) "-success-"
         write(16, *) "The size of POTENTIAL is:", N_x, N_y, N_z
         write(16, *) "----------"
@@ -179,7 +196,6 @@ program main
     atomic%TRANSMISSION_GRID(2) = TRANSMISSION_GRID(2) / hartree ! eV -> hartree
     atomic%LDOS_ENERGY_GRID(1) = LDOS_ENERGY_GRID(1) / hartree ! eV -> hartree
     atomic%LDOS_ENERGY_GRID(2) = LDOS_ENERGY_GRID(2) / hartree ! eV -> hartree
-    
     do k=1, N_z
         do j=1, N_y
             do i=1, N_x
@@ -199,11 +215,9 @@ program main
     end if
 
     !===Grid layout===
-    allocate(Density(N_x, N_y, N_z))
     allocate(V_reciprocal(-NGX: NGX, -NGY: NGY), V_reciprocal_all(-NGX: NGX, -NGY: NGY, 1: N_z))
-
     N = PlaneWaveBasis_construction_findsize(atomic%ENCUT, atomic%LX, atomic%LY)
-    allocate(nx_grid(N), ny_grid(N), Density_Matrix(N, N, N_z))
+    allocate(nx_grid(N), ny_grid(N))
     call PlaneWaveBasis_construction(atomic%ENCUT, atomic%LX, atomic%LY, nx_grid, ny_grid)
 
     if(rank == 0) then
@@ -216,8 +230,10 @@ program main
         close(16)
     end if
 
+
+
     !============================================================================================
-    !==========================================START=============================================
+    !=======================================START CALCULATION====================================
 
     ! =====GENERAL PROCEDURE: Construct 'V_reciprocal_all'=====
     call cpu_time(RtoP_time%start)
@@ -253,6 +269,7 @@ program main
             close(16)
         end if
 
+        allocate(Density(N_x, N_y, N_z), Density_Matrix(N, N, N_z))
         Density_Matrix(:, :, :) = 0.D0
         N_job = (N_circle + N_line) * size(kpoint)
         i_job = 1 + rank
@@ -433,7 +450,6 @@ program main
                 call Local_Density_Of_State(i_kpoint, i_energy, N_E, V_reciprocal_all, nx_grid, ny_grid, atomic,&
                 kpoint, LDOS_Matrix, LDOS_inverse_time)
                 
-                !print *, "POINT0", rank, subrank, i_energy, i_kpoint
                 i_kpoint = i_kpoint + mpi_subsize
 
                 if(rank == 0) then
@@ -460,7 +476,7 @@ program main
                 close(16)
             end if
 
-            ! Scatter to different rank
+            ! Scatter to different subrank
             call cpu_time(LDOS_PtoR_time%start)
             subsize = ((size(LDOS_Matrix, 3) - 1) / mpi_subsize + 1)
             allocate(sendbuf(N, N, subsize * mpi_subsize), recvbuf(N, N, subsize))
@@ -484,7 +500,7 @@ program main
                 call Greensfunction_PlanewaveToReal(recvbuf(:, :, k), nx_grid, ny_grid, sendbuf(:, :, k))
             end do
 
-            ! Gather from different rank
+            ! Gather from different subrank
             deallocate(recvbuf)
             allocate(recvbuf(N_x, N_y, subsize * mpi_subsize))
             call MPI_Gather(sendbuf, size(sendbuf), MPI_DOUBLE_COMPLEX, &
@@ -537,9 +553,12 @@ program main
 
     end if
 
-    !===========================================END==============================================
+    !========================================END CALCULATION=====================================
     !============================================================================================
     
+
+
+
     if(rank == 0) then
 
         !　Write out data
