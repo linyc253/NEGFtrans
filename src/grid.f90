@@ -332,9 +332,9 @@ contains
 
     end subroutine E_minus_H_construction
 
-    subroutine Transmission_solver(G_Function, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
+    subroutine Transmission_solver(G_Function_first_column, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
      kx, ky, V_L, V_R, tau)
-        type(t_gfunc), intent(in) :: G_Function(:, :, :)
+        complex*16, intent(in) :: G_Function_first_column(:, :, :)
         integer, intent(in) :: nx_grid(:), ny_grid(:)
         real*8, intent(in) :: energy, Lx, Ly, Lz, kx, ky, V_L, V_R
         real*8, intent(out) :: tau
@@ -345,8 +345,8 @@ contains
         real*8, allocatable :: QR(:), QT(:)
         complex*16, allocatable :: Matrix_A(:, :), Matrix_B(:, :)
 
-        N = size(G_Function, 1)
-        N_z = size(G_Function, 3)
+        N = size(G_Function_first_column, 1)
+        N_z = size(G_Function_first_column, 3)
         delta = Lz / N_z
 
         allocate(QR(N), QT(N), Matrix_A(N, N), Matrix_B(N, N))
@@ -362,14 +362,14 @@ contains
         ! Matrix_A = (\gamma_L)(g_{1, N_z})
         do j=1, N
             do i=1, N
-                Matrix_A(i, j) = sin(QR(i) * delta) / delta ** 2 * G_Function(i, j, N_z)%first_column
+                Matrix_A(i, j) = sin(QR(i) * delta) / delta ** 2 * G_Function_first_column(i, j, N_z)
             end do
         end do
 
         ! Matrix_B = (\gamma_R)(g^{\dagger}_{1, N_z})
         do j=1, N
             do i=1, N
-                Matrix_B(i, j) = sin(QT(i) * delta) / delta ** 2 * conjg(G_Function(j, i, N_z)%first_column)
+                Matrix_B(i, j) = sin(QT(i) * delta) / delta ** 2 * conjg(G_Function_first_column(j, i, N_z))
             end do
         end do
 

@@ -1,18 +1,19 @@
 program test_inverse
     ! To compile, enter the build/ directory, and type:
-    ! gfortran ../tools/test_inverse.f90 -o test_inverse.x math_kernel.o -llapack -lblas
+    ! gfortran ../tools/test_inverse.f90 -o test_inverse.x math_kernel.o global.o -llapack -lblas
     use math_kernel
+    use global
     implicit none
     integer, parameter :: N = 30, N_z = 50
     real*8 :: rand_real, rand_imag, start_time, end_time, sum
     complex*16, allocatable :: E_minus_H(:, :), Blocks(:, :, :), Greensfunc(:, :), work(:)
-    complex*16, allocatable :: G_function(:, :, :, :)
+    type(t_gfunc), allocatable :: G_function(:, :, :)
     integer, allocatable :: IPIV(:)
     integer :: i, j, z, N_tot, STATUS, NB, ilaenv
 
     N_tot = N * N_z
     allocate(E_minus_H(N_tot, N_tot), Blocks(N, N , N_z), Greensfunc(N_tot, N_tot))
-    allocate(G_function(N, N, N_z, 3))
+    allocate(G_function(N, N, N_z))
 
     do z=1, N_z
         do j=1, N
@@ -57,7 +58,7 @@ program test_inverse
 
     ! Inverse the matrix, Method 2
     call cpu_time(start_time)
-    call GreensFunction_tri_solver(Blocks, G_function)
+    call GreensFunction_tri_solver(Blocks, G_function, "FLD")
     call cpu_time(end_time)
     print *, "Method 2", end_time - start_time, "s"
 
@@ -71,7 +72,7 @@ program test_inverse
         do j=1, N
             do i=1, N
                 sum = sum + &
-                abs(Greensfunc(i + N * (z - 1), j + N * (z - 1)) - G_function(i, j, z, 1)) ** 2
+                abs(Greensfunc(i + N * (z - 1), j + N * (z - 1)) - G_function(i, j, z)%diagonal) ** 2
             end do
         end do
     end do
@@ -82,7 +83,7 @@ program test_inverse
         do j=1, N
             do i=1, N
                 sum = sum + &
-                abs(Greensfunc(i + N * (z - 1), j) - G_function(i, j, z, 2)) ** 2
+                abs(Greensfunc(i + N * (z - 1), j) - G_function(i, j, z)%first_column) ** 2
             end do
         end do
     end do
@@ -93,7 +94,7 @@ program test_inverse
         do j=1, N
             do i=1, N
                 sum = sum + &
-                abs(Greensfunc(i + N * (z - 1), j + N * (N_z - 1)) - G_function(i, j, z, 3)) ** 2
+                abs(Greensfunc(i + N * (z - 1), j + N * (N_z - 1)) - G_function(i, j, z)%last_column) ** 2
             end do
         end do
     end do

@@ -70,7 +70,7 @@ contains
 
         ! Solve for G_Function = (EI - Hamiltonian)^{-1}
         call cpu_time(inverse_time%start)
-        call GreensFunction_tri_solver(E_minus_H, G_Function)
+        call GreensFunction_tri_solver(E_minus_H, G_Function, "D")
         call cpu_time(inverse_time%end)
         inverse_time%sum = inverse_time%sum + inverse_time%end - inverse_time%start
 
@@ -78,9 +78,7 @@ contains
         do k=1, N_z
             do j=1, N
                 do i=1, N
-                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal         * 2.D0 * (atomic%LZ / N_z) ** 2
-                    G_Function(i, j, k)%first_column = G_Function(i, j, k)%first_column * 2.D0 * (atomic%LZ / N_z) ** 2
-                    G_Function(i, j, k)%last_column = G_Function(i, j, k)%last_column   * 2.D0 * (atomic%LZ / N_z) ** 2
+                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal * 2.D0 * (atomic%LZ / N_z) ** 2
                 end do
             end do
         end do
@@ -153,7 +151,7 @@ contains
 
         ! Solve for G_Function = (EI - Hamiltonian)^{-1}
         call cpu_time(trans_time%start)
-        call GreensFunction_tri_solver(E_minus_H, G_Function)
+        call GreensFunction_tri_solver(E_minus_H, G_Function, "F")
         call cpu_time(trans_time%end)
         trans_time%sum = trans_time%sum + trans_time%end - trans_time%start
 
@@ -161,16 +159,14 @@ contains
         do k=1, N_z
             do j=1, N
                 do i=1, N
-                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal         * 2.D0 * (atomic%LZ / N_z) ** 2
                     G_Function(i, j, k)%first_column = G_Function(i, j, k)%first_column * 2.D0 * (atomic%LZ / N_z) ** 2
-                    G_Function(i, j, k)%last_column = G_Function(i, j, k)%last_column   * 2.D0 * (atomic%LZ / N_z) ** 2
                 end do
             end do
         end do
 
 
         ! Calculate Transmission
-        call Transmission_solver(G_Function, Transmission(i_energy)%energy, nx_grid, ny_grid, atomic%LX, &
+        call Transmission_solver(G_Function%first_column, Transmission(i_energy)%energy, nx_grid, ny_grid, atomic%LX, &
         atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, tau)
 
         Transmission(i_energy)%tau = Transmission(i_energy)%tau + tau * kpoint(i_kpoint)%weight
@@ -214,7 +210,7 @@ contains
 
         ! Solve for G_Function = (EI - Hamiltonian)^{-1}
         call cpu_time(LDOS_inverse_time%start)
-        call GreensFunction_tri_solver(E_minus_H, G_Function)
+        call GreensFunction_tri_solver(E_minus_H, G_Function, "D")
         call cpu_time(LDOS_inverse_time%end)
         LDOS_inverse_time%sum = LDOS_inverse_time%sum + LDOS_inverse_time%end - LDOS_inverse_time%start
 
@@ -222,9 +218,7 @@ contains
         do k=1, N_z
             do j=1, N
                 do i=1, N
-                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal         * 2.D0 * (atomic%LZ / N_z) ** 2
-                    G_Function(i, j, k)%first_column = G_Function(i, j, k)%first_column * 2.D0 * (atomic%LZ / N_z) ** 2
-                    G_Function(i, j, k)%last_column = G_Function(i, j, k)%last_column   * 2.D0 * (atomic%LZ / N_z) ** 2
+                    G_Function(i, j, k)%diagonal = G_Function(i, j, k)%diagonal * 2.D0 * (atomic%LZ / N_z) ** 2
                 end do
             end do
         end do
