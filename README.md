@@ -28,3 +28,19 @@ module load gcc/10.5.0 openmpi/4.1.6
 
 mpirun /[your_path]/NEGFtrans/build/NEGFtrans.x
 ```
+For detailed input parameter setting, please refer to `doc/Manual.pdf`
+
+# Test Case
+Go to `testcase` directory, and prepare the input potential by
+```
+gfortran potential_QPC.f90 -o potential_QPC.x
+./potential_QPC.x
+```
+Then, you should find a file named `POTENTIAL` in current directory, and you can run the code by submitting the job script. After the calculation done, there should be a file named `TRANSMISSION`. You can then visualize it by either
+```
+xmgrace TRANSMISSION
+```
+or the python script (you may need to do some environment setting before running python on Taiwania 3)
+```
+python plot_trans.py
+```

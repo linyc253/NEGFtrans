@@ -1,0 +1,12 @@
+&INPUT
+if_transmission = .true.
+LX = 8.0
+LY = 18.0
+LZ = 40.0
+NKX = 1
+NKY = 6
+TRANSMISSION_GRID = 4.0 20.0 200
+
+ETA = 1E-6
+/
+
