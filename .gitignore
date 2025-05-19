@@ -4,4 +4,8 @@ test_negf/
 build/*
 !build/makefile
 docs/
+doc/*
+!doc/*.pdf
+!doc/*.tex
+!doc/*.png
 upload.sh

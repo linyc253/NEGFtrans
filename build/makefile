@@ -5,7 +5,7 @@ SOURCEDIR=../src
 TARGET=NEGFtrans
 
 # For the file 'fftw3.f03'
-INCLUDE= -I/usr/local/include
+INCLUDE= -I/usr/local/include -I/usr/include
 
 LIBS=-lfftw3 -llapack -lblas
 

@@ -1,8 +1,21 @@
 # Introduction
-This is a program aim for solving a transport system by NEGF method.
+The program solve the electron density, local density of state, and transmission coefficient of an open system using Non-Equilibrium Green's Function (NEGF) method. In particular, the program computes the quantities based on plane wave basis in transverse direction (xy), and real space grid in transport direction (z).
 
-# Directory Structure
-There are three important directories in this project
+# Repository Structure
+The structure of this repository is
+```
+├── src
+│    ├── main.f90
+│    ├── negf.f90
+│    ├── grid.f90
+│    ├── global.f90
+│    ├── tools.f90
+│    └── math_kernal.f90
+├── build
+│    └── makefile
+├── doc
+└── tools
+```
 1. src
 
     All the source code for main code will be contained in this folder.
@@ -18,39 +31,16 @@ There are three important directories in this project
 
     It's the folder that contain all the other codes that are not included in main code.
     
-    *  The Fortran codes in this folder are mostly used to test the subroutine in main code. To compile them, one should execute the command specified at the beginning of each code. For example,
-        ```
-        $ cd tools/
-        $ head test_LocalPotential_RtoP.f90 
-        program test_LocalPotential_RtoP
-            ! To compile, enter the build/ directory, and type:
-            ! gfortran ../tools/test_LocalPotential_RtoP.f90 -o test_LocalPotential_RtoP.x grid.o -lfftw3
-            use grid
-            implicit none
-            integer, parameter :: N_x = 160, N_y = 170, Nr = 30
-            real*8, parameter :: a_x = 10.D0, a_y = 8.D0, A = 600.D0, R = 2.D0
 
-            real*8 :: sum
-            real*8, allocatable :: V_real(:, :)
-        $ cd ../build/
-        $ gfortran ../tools/test_LocalPotential_RtoP.f90 -o test_LocalPotential_RtoP.x grid.o -lfftw3
-        ```
-        Then one can execute the program `test_LocalPotential_RtoP.x`
-    
-    * The Python codes are mostly used to plot graph to visualize the result. To execute the program, go to the proper directory containing the data you want to plot, and execute
-        ```
-        $ python PythonProgram.py
-        ```
-# Code structure
-There are four important files in `src/` directory
+Here are some important files in `src/` directory
 1. main.f90
 
     The main program, I call it FIRST layer of the code. Most of the input/output are here. Unit conversion is also done here. I've tried my best to avoid any math formula appear here so that the MPI calculation part is kept as clean and tidy as possible.
 1. negf.f90
 
-    This is the SECOND layer of the code. Most of the subroutine are just a "take out" from main program, so that `main.f90` is not going to mess up. One should never try to use any of the subroutine as a tool because they are just too specific, if you insist, I promise that it would blow up in the end.
+    This is the SECOND layer of the code. Most of the subroutine are just a "take out" from main program, so that `main.f90` is not going to mess up. One should never try to use any of the subroutine as a tool because they are just too specific.
 
-    Another thing worth notice is that all the physical input parameters (those parameters with unit, except array) are sent in to the subroutine by a derived type variable: atomic. This is to avoid hundreds of variable being passed in the subroutine.
+    Another thing worth notice is that all the physical input parameters (those parameters with unit, except array) are sent in to the subroutine by a derived type variable: `atomic`. This is to avoid hundreds of variable being passed in the subroutine.
 
 1. grid.f90
 
@@ -60,12 +50,16 @@ There are four important files in `src/` directory
 
     This is the THIRD layer of the code. Containing most of the subroutine that dealing with math formula (e.g. matrix inverse). These subroutines may be use as a tool in other code as well. The logic of the naming is similar to `grid.f90`.
 
-# Compile
+1. global.f90
+
+    This file store the global variable (physical constants) and type definition.
+
+# Installation
 Here are some information about environment setting. To successfully compile the program. The system might need to have the following compiler/library installed.
 
 1. gfortran: 
 
-    GNU compiler is suggested for my code. For those who want to use PGI or Intel compiler, some modification is required, so I strongly suggest you to use GNU Fortran to compile it.
+    GNU compiler is suggested for my code. For those who want to use PGI or Intel compiler, some modification of code is required, so I strongly suggest you to use GNU Fortran to compile it.
 
 
 1. OpenMPI:
@@ -73,15 +67,9 @@ Here are some information about environment setting. To successfully compile the
     Note that the openmpi should be installed with the default compiler being GNU Fortran mentioned above. One might check this by the following:
     ```
     $ gfortran --version
-    GNU Fortran (GCC) 10.4.0
-    Copyright (C) 2020 Free Software Foundation, Inc.
-    This is free software; see the source for copying conditions.  There is NO
-    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    GNU Fortran (GCC) x.x.x
     $ mpifort --version
-    GNU Fortran (GCC) 10.4.0
-    Copyright (C) 2020 Free Software Foundation, Inc.
-    This is free software; see the source for copying conditions.  There is NO
-    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    GNU Fortran (GCC) x.x.x
     ```
     That is, `gfortran --version` and `mpifort --version` should give the same result (this is because mpifort is just a wrapper of gfortran)
 
@@ -90,6 +78,9 @@ Here are some information about environment setting. To successfully compile the
     These libraries should be installed in either `/usr/local/lib` or `/usr/lib`. Also, FFTW3 library requires an include file `fftw3.f03`. Make sure that this file exists in the path specified in `makefile`:
     ```
     # For the file 'fftw3.f03'
-    INCLUDE= -I/usr/local/include 
+    INCLUDE= -I/usr/local/include -I/usr/include
     ```
     If not, you should modify this line in `makefile` to the correct path before compile the code.
+
+# Execution
+The program can be executed by `mpirun`. For detailed input parameter setting, please refer to `doc/Manual.pdf`
