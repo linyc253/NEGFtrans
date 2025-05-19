@@ -1,7 +1,0 @@
-{
-    "fortran.linter.includePaths": [
-        "${workspaceFolder}/build",
-        "/usr/local/include"
-    ],
-    "fortran.linter.compilerPath": "/opt/openmpi/bin/mpifort"
-}
