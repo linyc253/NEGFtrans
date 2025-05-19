@@ -16,15 +16,15 @@ Use the following job script
 #!/bin/sh
 #SBATCH -A XXXXXXXX
 #SBATCH -J NEGFtrans
-#SBATCH -p ct560
-#SBATCH -n 560          ## Total cores
+#SBATCH -p ctest
+#SBATCH -n 300          ## Total cores
 #SBATCH -c 1            ## Without this option, the controller will just try to allocate one processor per task.
 ##SBATCH -N 1            ## Number of nodes
 #SBATCH -o %j.out
 #SBATCH -e %j.err
 #SBATCH -t 05:00:00     ## Wall time limit (days-hrs:min:sec)
 
-module load gcc/10.5.0 openmpi/4.1.6
+module load gcc/10.5.0 intelmpi/2021.11
 
 mpirun /[your_path]/NEGFtrans/build/NEGFtrans.x
 ```

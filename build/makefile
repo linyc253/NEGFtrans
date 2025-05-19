@@ -1,6 +1,6 @@
 FFLAGS=-O3
 FC=gfortran
-MPIFC=mpifort
+MPIFC=mpif90
 SOURCEDIR=../src
 TARGET=NEGFtrans
 

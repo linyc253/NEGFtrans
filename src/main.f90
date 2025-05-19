@@ -585,7 +585,7 @@ program main
             ! Write
             write(16, *) "Writing TRANSMISSION..."
             open(unit=19, file="TRANSMISSION")
-            write(19, *) "   Energy (eV)    Transmission_coefficient"
+            write(19, *) "#   Energy (eV)    Transmission_coefficient"
             write(19, '(2G17.8)') (Transmission(i)%energy, Transmission(i)%tau, i=1, size(Transmission))
             close(19)
         end if
