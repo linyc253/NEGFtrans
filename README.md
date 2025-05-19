@@ -22,7 +22,7 @@ Use the following job script
 ##SBATCH -N 1            ## Number of nodes
 #SBATCH -o %j.out
 #SBATCH -e %j.err
-#SBATCH -t 05:00:00     ## Wall time limit (days-hrs:min:sec)
+##SBATCH -t 05:00:00     ## Wall time limit (days-hrs:min:sec)
 
 module load gcc/10.5.0 intelmpi/2021.11
 
