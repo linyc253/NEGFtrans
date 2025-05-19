@@ -110,6 +110,9 @@ contains
 
         end if
 
+        deallocate(Hamiltonian, E_minus_H)
+        deallocate(G_function)
+
     end subroutine Equilibrium_Density
     
     subroutine Transmission_Coefficient(i_job, V_reciprocal_all, nx_grid, ny_grid, atomic,&
@@ -170,6 +173,9 @@ contains
         atomic%LY, atomic%LZ, kx, ky, atomic%V_L, atomic%V_R, tau)
 
         Transmission(i_energy)%tau = Transmission(i_energy)%tau + tau * kpoint(i_kpoint)%weight
+
+        deallocate(Hamiltonian, E_minus_H)
+        deallocate(G_function)
         
     end subroutine Transmission_Coefficient
 
@@ -232,6 +238,9 @@ contains
                 end do
             end do
         end do
+
+        deallocate(Hamiltonian, E_minus_H)
+        deallocate(G_function)
         
     end subroutine Local_Density_Of_State
 

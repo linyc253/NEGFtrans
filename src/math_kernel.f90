@@ -3,24 +3,18 @@ module math_kernel
     implicit none
     private
     public GreensFunction_tri_solver, coefficient_simpson, value_simpson, fermi_func
-    logical :: reset = .true.
 contains
     subroutine inverse(Matrix, inv_Matrix)
         complex*16, intent(in) :: Matrix(:, :)
         complex*16, intent(out) :: inv_Matrix(:, :)
-        complex*16, allocatable, save :: work(:)
-        integer, allocatable, save :: IPIV(:)
-        integer, save :: N, NB
+        complex*16, allocatable :: work(:)
+        integer, allocatable :: IPIV(:)
+        integer :: N, NB
         integer :: i, j, STATUS, ilaenv
-        if(reset) then
-            N = size(Matrix, 1)
-            NB = ilaenv(1, "zgetri", "", N, N, -1, -1)
-            if(NB < 1) NB = N
-            if(allocated(IPIV)) deallocate(IPIV)
-            if(allocated(work)) deallocate(work)
-            allocate(IPIV(N), work(NB * N))
-            reset = .false.
-        end if
+        N = size(Matrix, 1)
+        NB = ilaenv(1, "zgetri", "", N, N, -1, -1)
+        if(NB < 1) NB = N
+        allocate(IPIV(N), work(NB * N))
 
         do j=1, N
             do i=1, N
@@ -31,6 +25,7 @@ contains
         call zgetrf(N, N, inv_Matrix, N, IPIV, STATUS)
         call zgetri(N, inv_Matrix, N, IPIV, work, NB * N, STATUS)
         
+        deallocate(IPIV, work)
     end subroutine
 
     subroutine matrix_product(A, B, C)
@@ -160,8 +155,11 @@ contains
                     end do
                 end do
             end if
+
+            deallocate(generator_l)
+            deallocate(generator_r)
+            deallocate(Matrix)
             
-            reset = .true.
         end subroutine GreensFunction_tri_solver
 
         function coefficient_simpson(i, N, a, b) result(coefficient)

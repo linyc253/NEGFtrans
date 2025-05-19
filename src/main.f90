@@ -623,5 +623,11 @@ program main
         close(16)
     end if
 
+    deallocate(V_real, kpoint, V_reciprocal, V_reciprocal_all, nx_grid, ny_grid)
+
+    if(if_density) deallocate(Density, Density_Matrix)
+    if(if_transmission) deallocate(Transmission)
+    if(if_LDOS) deallocate(LDOS_Matrix, LDOS)
+
     call MPI_FINALIZE(STATUS)
 end program main

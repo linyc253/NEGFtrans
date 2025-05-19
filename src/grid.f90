@@ -66,6 +66,9 @@ contains
                 V_reciprocal(i, j) = conjg(V_reciprocal(-i, -j))
             end do
         end do
+
+        deallocate(work)
+        deallocate(work_out)
     end subroutine LocalPotential_RealToPlanewave
 
     subroutine Greensfunction_PlanewaveToReal(subGreenFunc, nx_grid, ny_grid, subGreenDiag)
@@ -131,6 +134,9 @@ contains
 
             end do
         end do
+
+        deallocate(GreenTensor)
+        deallocate(work, work_out)
 
     end subroutine Greensfunction_PlanewaveToReal
 
@@ -231,6 +237,9 @@ contains
                 end do
             end do
         end do
+
+        deallocate(V_work)
+        deallocate(work, work_out)
     end subroutine NonLocalPotential_RealToPlanewave
 
     subroutine Hamiltonian_construction(nx_grid, ny_grid, Lx, Ly, kx, ky, V_reciprocal, Hamiltonian)
@@ -330,6 +339,8 @@ contains
             E_minus_H(i, i, N_z) = E_minus_H(i, i, N_z) + exp(complex(0, 1.D0) * QT(i) * delta)
         end do
 
+        deallocate(QR, QT)
+
     end subroutine E_minus_H_construction
 
     subroutine Transmission_solver(G_Function_first_column, energy, nx_grid, ny_grid, Lx, Ly, Lz, &
@@ -381,6 +392,8 @@ contains
             end do
         end do
         tau = real(sum)
+
+        deallocate(QR, QT, Matrix_A, Matrix_B)
 
     end subroutine Transmission_solver
 
