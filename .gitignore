@@ -9,3 +9,4 @@ doc/*
 !doc/*.tex
 !doc/*.png
 upload.sh
+.vscode/*
