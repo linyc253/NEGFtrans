@@ -92,7 +92,7 @@ program main
     close(15)
 
     ! Modify NGX, NGY
-    if(NGX <= ceiling((LY / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2)) then
+    if(NGX <= ceiling((LX / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2)) then
         NGX = ceiling((LX / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2) + 1
     end if
     if(NGY <= ceiling((LY / a_0) / pi * sqrt(ENCUT / hartree / 2) * 2)) then
