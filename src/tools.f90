@@ -99,6 +99,8 @@ contains
         print *, "(", N, ",", M, ")"
         print *, maxval(Matrix_abs)
         print *, "=============================="
+
+        deallocate(Matrix_abs)
     end subroutine print_c_matrix
 
     subroutine print_c_tensor(Tensor)
@@ -122,6 +124,8 @@ contains
         print *, "(", N, ",", N, ",", M, ",", M, ")"
         print *, maxval(Tensor_abs)
         print *, "=============================="
+
+        deallocate(Tensor_abs)
     end subroutine print_c_tensor
 
 end module tools
